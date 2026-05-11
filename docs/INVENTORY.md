@@ -261,7 +261,7 @@ Full roster at `get-shit-done/workflows/*.md`. Workflows are thin orchestrators 
 
 ---
 
-## References (59 shipped)
+## References (60 shipped)
 
 Full roster at `get-shit-done/references/*.md`. References are shared knowledge documents that workflows and agents `@-reference`. The groupings below match [`docs/ARCHITECTURE.md`](ARCHITECTURE.md#references-get-shit-donereferencesmd) — core, workflow, thinking-model clusters, and the modular planner decomposition.
 
@@ -350,15 +350,16 @@ The `gsd-planner` agent is decomposed into a core agent plus reference modules t
 | `planner-revision.md` | Plan revision patterns for iterative refinement. |
 | `planner-source-audit.md` | Planner source-audit and authority-limit rules. |
 | `planner-mvp-mode.md` | Vertical-slice planning rules for MVP mode. |
+| `planner-human-verify-mode.md` | Rules for `workflow.human_verify_mode = end-of-phase`: suppress `checkpoint:human-verify` task emission and route deferred items via `<verify><human-check>`. |
 | `skeleton-template.md` | SKELETON.md template emitted for new-project Walking Skeleton (Phase 1 + `--mvp`). |
 | `user-story-template.md` | User story format for MVP planning — "As a / I want to / So that" structured fields. |
 | `spidr-splitting.md` | SPIDR splitting decomposition rules for handling large user stories in MVP mode. |
 
-> **Subdirectory:** `get-shit-done/references/few-shot-examples/` contains additional few-shot examples (`plan-checker.md`, `verifier.md`) that are referenced from specific agents. These are not counted in the 59 top-level references.
+> **Subdirectory:** `get-shit-done/references/few-shot-examples/` contains additional few-shot examples (`plan-checker.md`, `verifier.md`) that are referenced from specific agents. These are not counted in the 60 top-level references.
 
 ---
 
-## CLI Modules (46 shipped)
+## CLI Modules (50 shipped)
 
 Full listing: `get-shit-done/bin/lib/*.cjs`.
 
@@ -367,6 +368,7 @@ Full listing: `get-shit-done/bin/lib/*.cjs`.
 | `active-workstream-store.cjs` | Workstream source precedence and selection (CLI `--ws` > `GSD_WORKSTREAM` env > stored pointer); name validation and environment propagation |
 | `artifacts.cjs` | Canonical artifact registry — known `.planning/` root file names; used by `gsd-health` W019 lint |
 | `audit.cjs` | Audit dispatch, audit open sessions, audit storage helpers |
+| `cjs-command-router-adapter.cjs` | Shared compatibility adapter for manifest-backed CJS command-family routers |
 | `command-aliases.generated.cjs` | Generated CJS alias/subcommand metadata for manifest-backed family routers |
 | `commands.cjs` | Misc CLI commands (slug, timestamp, todos, scaffolding, stats) |
 | `config-schema.cjs` | Single source of truth for `VALID_CONFIG_KEYS` and dynamic key patterns; imported by both the validator and the config-schema-docs parity test |
@@ -391,6 +393,7 @@ Full listing: `get-shit-done/bin/lib/*.cjs`.
 | `phase-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools phase` |
 | `phase.cjs` | Phase directory operations, decimal numbering, plan indexing |
 | `phases-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools phases` |
+| `plan-scan.cjs` | Canonical phase-plan scanner — shared helper for detecting plan and summary files in flat and nested layouts (k014); consumed by state, roadmap, init, and workstream inventory paths |
 | `planning-workspace.cjs` | Planning path/workstream seam (`planningDir`, `planningPaths`, active-workstream routing, `.planning/.lock` orchestration) |
 | `profile-output.cjs` | Profile rendering, USER-PROFILE.md and dev-preferences.md generation |
 | `profile-pipeline.cjs` | User behavioral profiling data pipeline, session file scanning |
@@ -402,11 +405,13 @@ Full listing: `get-shit-done/bin/lib/*.cjs`.
 | `security.cjs` | Path traversal prevention, prompt injection detection, safe JSON/shell helpers |
 | `state-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools state` |
 | `state.cjs` | STATE.md parsing, updating, progression, metrics |
+| `state-document.cjs` | Pure STATE.md field extraction, replacement, status normalization, and progress calculation transforms |
 | `template.cjs` | Template selection and filling with variable substitution |
 | `uat.cjs` | UAT file parsing, verification debt tracking, audit-uat support |
 | `validate-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools validate` |
 | `verify-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools verify` |
 | `verify.cjs` | Plan structure, phase completeness, reference, commit validation |
+| `workstream-inventory.cjs` | Shared workstream inventory projection: state fields, phase/plan/summary counts, roadmap phase count, and active marker |
 | `workstream-name-policy.cjs` | Canonical workstream name validation (`isValidActiveWorkstreamName`) and slug normalization (`toWorkstreamSlug`); shared by all workstream callers |
 | `workstream.cjs` | Workstream CRUD, migration, session-scoped active pointer |
 | `worktree-safety.cjs` | Worktree-root resolution and non-destructive prune policy decisions; owns W017 health-check logic |

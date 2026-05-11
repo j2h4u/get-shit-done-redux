@@ -594,8 +594,15 @@ function resolveNodeRunner() {
  *
  * Returns true if any entry was rewritten.
  */
-function rewriteLegacyManagedNodeHookCommands(settings, absoluteRunner) {
+function formatHookCommandForShell(command, opts) {
+  const platform = (opts && opts.platform) || process.platform;
+  return platform === 'win32' ? `& ${command}` : command;
+}
+
+function rewriteLegacyManagedNodeHookCommands(settings, absoluteRunner, opts) {
   if (!settings || !settings.hooks || !absoluteRunner) return false;
+  if (!opts) opts = {};
+  const platform = opts.platform || process.platform;
   const MANAGED_HOOK_FILES = new Set([
     'gsd-check-update.js',
     'gsd-statusline.js',
@@ -613,7 +620,11 @@ function rewriteLegacyManagedNodeHookCommands(settings, absoluteRunner) {
       if (!entry || !Array.isArray(entry.hooks)) continue;
       for (const h of entry.hooks) {
         if (!h || typeof h.command !== 'string') continue;
-        const trimmed = h.command.trim();
+        let trimmed = h.command.trim();
+        const hadPowerShellCallOperator = platform === 'win32' && /^&\s+/.test(trimmed);
+        if (hadPowerShellCallOperator) {
+          trimmed = trimmed.replace(/^&\s+/, '').trim();
+        }
         // Match two runner forms:
         //   1. Legacy bare-node form: `node <script>` (#2979/#3002)
         //   2. Cellar-path form: `"/usr/local/Cellar/node/<v>/bin/node" <script>`
@@ -642,8 +653,10 @@ function rewriteLegacyManagedNodeHookCommands(settings, absoluteRunner) {
           runnerToken = m[1];
           const runnerPath = (m[2] || m[3] || m[4] || '').replace(/\\/g, '/');
           const stableRunner = normalizeNodePath(runnerPath);
-          // Only process if the runner IS a Cellar path that normalizes to something different
-          if (stableRunner === runnerPath) continue;
+          // Process Cellar paths so they normalize to a stable symlink. On
+          // Windows, also process already-absolute runners so PowerShell gets
+          // the call operator needed to invoke a quoted executable path (#3362).
+          if (stableRunner === runnerPath && platform !== 'win32') continue;
           scriptToken = m[5];
           scriptPath = m[6] || m[7] || m[8] || '';
         }
@@ -654,10 +667,12 @@ function rewriteLegacyManagedNodeHookCommands(settings, absoluteRunner) {
         const scriptBase = scriptPath.split(/[\\/]/).pop() || '';
         if (!MANAGED_HOOK_FILES.has(scriptBase)) continue;
 
-        // Skip if already using the desired stable runner
-        if (runnerToken !== 'node' && runnerToken === absoluteRunner) continue;
+        // Skip if already using the desired stable runner.
+        if (runnerToken !== 'node' && runnerToken === absoluteRunner) {
+          if (platform !== 'win32' || hadPowerShellCallOperator) continue;
+        }
 
-        h.command = `${absoluteRunner} ${scriptToken}`;
+        h.command = formatHookCommandForShell(`${absoluteRunner} ${scriptToken}`, opts);
         changed = true;
       }
     }
@@ -759,16 +774,87 @@ function rewriteLegacyCodexHookBlock(content, absoluteRunner) {
   return { content: updated, changed };
 }
 
+function isManagedCodexHookCommand(command, targetDir) {
+  if (typeof command !== 'string') return false;
+  if (typeof targetDir !== 'string' || targetDir.length === 0) return false;
+  const normalizedCommand = command.replace(/\\/g, '/');
+  const managedHooksDir = `${path.join(targetDir, 'hooks').replace(/\\/g, '/')}/`;
+  if (!normalizedCommand.includes(managedHooksDir)) return false;
+  return /(^|[\\/\s"'])(gsd-check-update\.js|gsd-update-check\.js)(?=$|[\s"'])/.test(normalizedCommand);
+}
+
+function pruneGsdManagedHooksJsonValue(value, targetDir) {
+  if (Array.isArray(value)) {
+    let changed = false;
+    const next = [];
+    for (const item of value) {
+      const pruned = pruneGsdManagedHooksJsonValue(item, targetDir);
+      if (pruned.changed) changed = true;
+      if (!isStructurallyEmpty(pruned.value)) next.push(pruned.value);
+      else changed = true;
+    }
+    return { value: next, changed };
+  }
+
+  if (value && typeof value === 'object') {
+    if (isManagedCodexHookCommand(value.command, targetDir)) {
+      return { value: null, changed: true };
+    }
+
+    let changed = false;
+    const next = {};
+    for (const [key, child] of Object.entries(value)) {
+      const pruned = pruneGsdManagedHooksJsonValue(child, targetDir);
+      if (pruned.changed) changed = true;
+      if (!isStructurallyEmpty(pruned.value)) next[key] = pruned.value;
+      else changed = true;
+    }
+    return { value: next, changed };
+  }
+
+  return { value, changed: false };
+}
+
+function isStructurallyEmpty(value) {
+  if (value === null || value === undefined) return true;
+  if (Array.isArray(value)) return value.length === 0;
+  return typeof value === 'object' && Object.keys(value).length === 0;
+}
+
+function cleanupLegacyCodexHooksJson(targetDir) {
+  const hooksPath = path.join(targetDir, 'hooks.json');
+  if (!fs.existsSync(hooksPath)) return { changed: false, removedFile: false };
+
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
+  } catch {
+    return { changed: false, removedFile: false, skipped: 'invalid_json' };
+  }
+
+  const pruned = pruneGsdManagedHooksJsonValue(parsed, targetDir);
+  if (!pruned.changed) return { changed: false, removedFile: false };
+
+  if (isStructurallyEmpty(pruned.value)) {
+    fs.unlinkSync(hooksPath);
+    return { changed: true, removedFile: true };
+  }
+
+  atomicWriteFileSync(hooksPath, JSON.stringify(pruned.value, null, 2) + '\n', 'utf8');
+  return { changed: true, removedFile: false };
+}
+
 /**
  * Build a hook command path using forward slashes for cross-platform compatibility.
  * On Windows, $HOME is not expanded by cmd.exe/PowerShell, so we use the actual path.
  *
  * @param {string} configDir - Resolved absolute config directory path
  * @param {string} hookName - Hook filename (e.g. 'gsd-statusline.js')
- * @param {{ portableHooks?: boolean }} [opts] - Options
+ * @param {{ portableHooks?: boolean, platform?: NodeJS.Platform }} [opts] - Options
  *   portableHooks: when true, emit $HOME-relative paths instead of absolute paths.
  *   Safe for Linux/macOS global installs and WSL/Docker bind-mount scenarios.
  *   Not suitable for pure Windows (cmd.exe/PowerShell do not expand $HOME).
+ *   platform: test injection for shell command formatting. Defaults to process.platform.
  */
 function buildHookCommand(configDir, hookName, opts) {
   if (!opts) opts = {};
@@ -797,12 +883,12 @@ function buildHookCommand(configDir, hookName, opts) {
     const relative = normalized.startsWith(home)
       ? '$HOME' + normalized.slice(home.length)
       : normalized;
-    return `${runner} "${relative}/hooks/${hookName}"`;
+    return formatHookCommandForShell(`${runner} "${relative}/hooks/${hookName}"`, opts);
   }
 
   // Default: absolute path with forward slashes (Windows-safe, fixes #2045/#2046).
   const hooksPath = configDir.replace(/\\/g, '/') + '/hooks/' + hookName;
-  return `${runner} "${hooksPath}"`;
+  return formatHookCommandForShell(`${runner} "${hooksPath}"`, opts);
 }
 
 /**
@@ -1215,7 +1301,6 @@ const claudeToGeminiTools = {
   WebSearch: 'google_web_search',
   WebFetch: 'web_fetch',
   TodoWrite: 'write_todos',
-  AskUserQuestion: 'ask_user',
 };
 
 /**
@@ -1240,7 +1325,7 @@ function convertToolName(claudeTool) {
  * Convert a Claude Code tool name to Gemini CLI format
  * - Applies Claude→Gemini mapping (Read→read_file, Bash→run_shell_command, etc.)
  * - Filters out MCP tools (mcp__*) — they are auto-discovered at runtime in Gemini
- * - Filters out Task — agents are auto-registered as tools in Gemini
+ * - Filters out Task/Agent — agents are auto-registered as tools in Gemini
  * @returns {string|null} Gemini tool name, or null if tool should be excluded
  */
 function convertGeminiToolName(claudeTool) {
@@ -1248,8 +1333,15 @@ function convertGeminiToolName(claudeTool) {
   if (claudeTool.startsWith('mcp__')) {
     return null;
   }
-  // Task: exclude — agents are auto-registered as callable tools
-  if (claudeTool === 'Task') {
+  // Task/Agent: exclude — agents are auto-registered as callable tools.
+  // AskUserQuestion: exclude — Gemini CLI does not expose an ask_user tool;
+  // emitting it causes frontmatter validation errors (#3362).
+  if (
+    claudeTool === 'Task' ||
+    claudeTool === 'Agent' ||
+    claudeTool === 'AskUserQuestion' ||
+    claudeTool === 'ask_user'
+  ) {
     return null;
   }
   // Check for explicit mapping
@@ -2264,6 +2356,10 @@ Direct mapping:
   at install time so \`model_overrides\` from \`.planning/config.json\` and
   \`~/.gsd/defaults.json\` are honored automatically by Codex's agent router.
 - \`fork_context: false\` by default — GSD agents load their own context via \`<files_to_read>\` blocks
+- \`Task(isolation="worktree")\` / \`Agent(isolation="worktree")\` → no direct Codex mapping.
+  Codex \`spawn_agent\` does not create or bind a git worktree automatically.
+  Workflows that require this isolation must fail closed or use an explicit
+  manual worktree protocol before spawning (#3360).
 
 Spawn restriction:
 - Codex restricts \`spawn_agent\` to cases where the user has explicitly
@@ -3336,10 +3432,13 @@ function migrateCodexHooksMapFormat(content) {
   // Use section.segments (parsed key count) rather than section.path.startsWith() so that
   // nested handler tables like [hooks.SessionStart.hooks] (3 segments) are not mistakenly
   // included and re-emitted as an event named "SessionStart.hooks".
+  // Exclude hooks.state and hooks.state.* — these are Codex's persistent hook-trust
+  // namespace (Codex CLI 0.130.0+) and use regular-table shape, never AoT.
   const legacyMapSections = sections.filter(
     (section) => !section.array && (
       section.path === 'hooks' ||
-      (section.path.startsWith('hooks.') && section.segments.length === 2)
+      (section.path.startsWith('hooks.') && section.segments.length === 2 &&
+        section.path !== 'hooks.state' && !section.path.startsWith('hooks.state.'))
     )
   );
 
@@ -3977,7 +4076,20 @@ function validateCodexConfigSchema(content) {
       };
     }
 
-    if (!section.array && section.path.startsWith('hooks.')) {
+    // hooks.state.* is Codex's persistent hook-trust namespace (added in
+    // Codex CLI 0.130.0). It uses regular-table shape, NOT array-of-tables.
+    // [[hooks.state]] or [[hooks.state.<key>]] (AoT) is invalid; reject it.
+    if (section.array && (section.path === 'hooks.state' || section.path.startsWith('hooks.state.'))) {
+      return {
+        ok: false,
+        reason: `[[${section.path}]] is invalid; hooks.state namespace must use regular tables`,
+      };
+    }
+
+    // All other hooks.* paths (event handlers like hooks.SessionStart) require
+    // AoT shape — bare [hooks.<Event>] (single-bracket) is invalid.
+    if (!section.array && section.path.startsWith('hooks.') &&
+        section.path !== 'hooks.state' && !section.path.startsWith('hooks.state.')) {
       return {
         ok: false,
         reason: `bare [${section.path}] table is invalid in current Codex schema (expected [[${section.path}]] array-of-tables)`,
@@ -3997,6 +4109,24 @@ function validateCodexConfigSchema(content) {
     }
     if (typeof parsed.hooks === 'object' && parsed.hooks !== null) {
       for (const [event, value] of Object.entries(parsed.hooks)) {
+        // hooks.state is Codex's persistent hook-trust namespace — a regular
+        // object (table), not an array of event-handler tables.
+        // Reject AoT shape (Array) and scalar forms; only plain objects are valid.
+        if (event === 'state') {
+          if (Array.isArray(value)) {
+            return {
+              ok: false,
+              reason: `hooks.state must be a regular table/object, got array-of-tables`,
+            };
+          }
+          if (typeof value !== 'object' || value === null) {
+            return {
+              ok: false,
+              reason: `hooks.state must be a regular table/object, got ${typeof value}`,
+            };
+          }
+          continue;
+        }
         // Skip the nested .hooks sub-array — it lives under hooks.<Event>[n].hooks
         // and is validated separately below.
         if (!Array.isArray(value)) {
@@ -4702,6 +4832,10 @@ function convertSlashCommandsToGeminiMentions(content) {
 function convertClaudeToGeminiMarkdown(content, { isCommand = false } = {}) {
   // Apply Gemini-specific slash command namespacing
   let converted = convertSlashCommandsToGeminiMentions(content);
+  // Gemini CLI does not expose Claude's AskUserQuestion tool. Convert body
+  // references to runtime-neutral wording so converted agents do not instruct
+  // Gemini to call a nonexistent tool (#3362).
+  converted = converted.replace(/\b(?:AskUserQuestion|ask_user)\b/g, 'conversational prompting');
   // Strip HTML subscript tags — terminals can't render them. Done before
   // TOML conversion so the prompt body of a command file is also clean.
   converted = stripSubTags(converted);
@@ -7951,6 +8085,28 @@ function install(isGlobal, runtime = 'claude') {
     failures.push('get-shit-done');
   }
 
+  // #3288 — Copy sdk/shared/model-catalog.json into the get-shit-done payload
+  // at the co-located path that model-catalog.cjs resolves first:
+  //   get-shit-done/bin/shared/model-catalog.json
+  //
+  // The install copies get-shit-done/ but NOT sdk/ — the CJS module's legacy
+  // path (3 levels up → sdk/shared/) therefore resolves to a non-existent
+  // location in every post-install layout.  Copying the catalog alongside the
+  // CJS files ensures require() succeeds without needing sdk/ to exist.
+  const modelCatalogSrc = path.join(src, 'sdk', 'shared', 'model-catalog.json');
+  const modelCatalogDest = path.join(skillDest, 'bin', 'shared', 'model-catalog.json');
+  if (fs.existsSync(modelCatalogSrc)) {
+    fs.mkdirSync(path.dirname(modelCatalogDest), { recursive: true });
+    fs.copyFileSync(modelCatalogSrc, modelCatalogDest);
+    if (verifyFileInstalled(modelCatalogDest, 'get-shit-done/bin/shared/model-catalog.json')) {
+      console.log(`  ${green}✓${reset} Installed get-shit-done/bin/shared/model-catalog.json`);
+    } else {
+      failures.push('get-shit-done/bin/shared/model-catalog.json');
+    }
+  } else {
+    failures.push('sdk/shared/model-catalog.json (source missing)');
+  }
+
   // Copy agents to agents directory.
   // Skipped under --minimal: gsd-* subagent descriptions are eagerly loaded
   // into the runtime's Agent tool schema, costing ~6k tokens per turn even
@@ -8530,6 +8686,10 @@ function install(isGlobal, runtime = 'claude') {
         throw wrapped;
       }
       console.log(`  ${green}✓${reset} Configured Codex hooks (SessionStart)`);
+      const legacyHooksCleanup = cleanupLegacyCodexHooksJson(targetDir);
+      if (legacyHooksCleanup.changed) {
+        console.log(`  ${green}✓${reset} Removed legacy GSD hooks.json entries`);
+      }
     } catch (e) {
       // #2760 — schema-validation and write failures must be loud and fatal
       // so the user is never left with a config Codex refuses to load (or no
@@ -8643,7 +8803,7 @@ function install(isGlobal, runtime = 'claude') {
   // `node` command that recreates the #2979 failure.
   const localCmd = (hookFile) => localNodeRunner === null
     ? null
-    : localNodeRunner + ' ' + localPrefix + '/hooks/' + hookFile;
+    : formatHookCommandForShell(localNodeRunner + ' ' + localPrefix + '/hooks/' + hookFile, hookOpts);
   const statuslineCommand = isGlobal
     ? buildHookCommand(targetDir, 'gsd-statusline.js', hookOpts)
     : localCmd('gsd-statusline.js');
@@ -9773,7 +9933,8 @@ function installSdkIfNeeded(opts) {
   // shell. A gsd-sdk found there must NOT count as "on PATH".
   const shimSrc = path.resolve(__dirname, 'gsd-sdk.js');
   const persistentPath = filterNpxFromPath(process.env.PATH || '');
-  let onPath = isGsdSdkOnPath(persistentPath);
+  let resolvedSdkPath = findGsdSdkOnPath(persistentPath);
+  let onPath = !!resolvedSdkPath;
 
   // Track WHERE we wrote the shim so the diagnostic can be specific even
   // when isGsdSdkOnPath() returns false because the write target isn't on
@@ -9790,7 +9951,8 @@ function installSdkIfNeeded(opts) {
     const linked = trySelfLinkGsdSdk(shimSrc);
     if (linked) {
       shimDir = path.dirname(linked);
-      onPath = isGsdSdkOnPath(persistentPath);
+      resolvedSdkPath = findGsdSdkOnPath(persistentPath);
+      onPath = !!resolvedSdkPath;
       if (onPath) {
         console.log(`  ${dim}↪ linked gsd-sdk → ${linked}${reset}`);
       }
@@ -9823,16 +9985,24 @@ function installSdkIfNeeded(opts) {
     const persistentUserShellPath = process.platform === 'win32'
       ? userShellPath  // already filtered by getUserShellWindowsPersistentPath
       : filterNpxFromPath(userShellPath);
-    const userSees = isGsdSdkOnPath(persistentUserShellPath);
-    if (!userSees) {
+    const userSdkPath = findGsdSdkOnPath(persistentUserShellPath);
+    if (!userSdkPath) {
       onPath = false;
+      resolvedSdkPath = null;
+    } else {
+      resolvedSdkPath = userSdkPath;
     }
   }
   // If userShellPath is null (probe failed or unavailable), onPath reflects
   // the persistent-PATH check — that is the best available invariant.
 
   if (onPath) {
-    console.log(`  ${green}✓${reset} GSD SDK ready (sdk/dist/cli.js)`);
+    const versionReport = buildGsdSdkVersionMismatchReport(resolvedSdkPath, pkg.version);
+    if (versionReport) {
+      renderGsdSdkVersionMismatchReport(versionReport);
+    } else {
+      console.log(`  ${green}✓${reset} GSD SDK ready (sdk/dist/cli.js)`);
+    }
   } else {
     // #3011: actionable diagnostic. The previous shape printed a generic
     // "not on your PATH" message that didn't tell the user where to look.
@@ -9939,7 +10109,7 @@ function filterNpxFromPath(pathString) {
 }
 
 /**
- * #2775 helper: check whether a callable `gsd-sdk` exists on a PATH.
+ * #2775 helper: find a callable `gsd-sdk` on a PATH.
  *
  * Pure PATH walk (no spawn) — we look for a regular file or symlink named
  * `gsd-sdk` (or `gsd-sdk.cmd`/`.exe` on Windows) in any directory on PATH and
@@ -9957,7 +10127,7 @@ function filterNpxFromPath(pathString) {
  * isLegacyGsdSdkShim — a symlink pointing at the deprecated gsd-tools.cjs
  * binary must NOT be treated as "on PATH" even if it is executable.
  */
-function isGsdSdkOnPath(pathString) {
+function findGsdSdkOnPath(pathString) {
   const path = require('path');
   const fs = require('fs');
   // Type-guard the explicit input (#3028 CR): callers may pass null
@@ -9973,13 +10143,13 @@ function isGsdSdkOnPath(pathString) {
         const st = fs.statSync(candidate);
         if (st.isFile()) {
           if (process.platform === 'win32') {
-            if (!isLegacyGsdSdkShim(candidate)) return true;
+            if (!isLegacyGsdSdkShim(candidate)) return candidate;
           } else if ((st.mode & 0o111) !== 0) {
             // #3231: resolve symlink before sniffing, so we detect legacy
             // through any level of indirection.
             let target = candidate;
             try { target = fs.realpathSync(candidate); } catch {}
-            if (!isLegacyGsdSdkShim(target)) return true;
+            if (!isLegacyGsdSdkShim(target)) return candidate;
           }
         }
       } catch {
@@ -9987,7 +10157,60 @@ function isGsdSdkOnPath(pathString) {
       }
     }
   }
-  return false;
+  return null;
+}
+
+function isGsdSdkOnPath(pathString) {
+  return !!findGsdSdkOnPath(pathString);
+}
+
+function parseGsdSdkVersion(text) {
+  const match = String(text || '').match(/\bv?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\b/);
+  return match ? match[1] : null;
+}
+
+function readGsdSdkVersion(sdkPath) {
+  if (!sdkPath) return null;
+  const cp = require('child_process');
+  try {
+    const isWindowsCommandShim = process.platform === 'win32' && /\.(cmd|bat)$/i.test(String(sdkPath));
+    const result = cp.spawnSync(isWindowsCommandShim ? 'cmd.exe' : sdkPath, isWindowsCommandShim ? ['/c', sdkPath, '--version'] : ['--version'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 2000,
+      env: process.env,
+    });
+    if (result.error || result.status !== 0) return null;
+    return parseGsdSdkVersion(`${result.stdout || ''}\n${result.stderr || ''}`);
+  } catch {
+    return null;
+  }
+}
+
+function buildGsdSdkVersionMismatchReport(sdkPath, expectedVersion) {
+  const actualVersion = readGsdSdkVersion(sdkPath);
+  if (!actualVersion || !expectedVersion) return null;
+  if (actualVersion === expectedVersion) return null;
+  return {
+    ok: false,
+    reason: 'gsd_sdk_version_mismatch',
+    sdk_path: sdkPath,
+    actual_version: actualVersion,
+    expected_version: expectedVersion,
+    fix_command: 'npm install -g get-shit-done-cc@latest',
+  };
+}
+
+function renderGsdSdkVersionMismatchReport(ir) {
+  console.log('');
+  console.log(`  ${yellow}⚠${reset} ${bold}gsd-sdk version mismatch${reset} — PATH resolves a stale SDK.`);
+  console.log(`    Resolved gsd-sdk: ${ir.sdk_path}`);
+  console.log(`    Resolved version: ${ir.actual_version}`);
+  console.log(`    Installer version: ${ir.expected_version}`);
+  console.log(`    Workflows that call ${cyan}gsd-sdk query …${reset} will use the stale executable first.`);
+  console.log(`    Fix: ${cyan}${ir.fix_command}${reset}`);
+  console.log(`    Or remove the stale global install / adjust PATH so the current shim is first.`);
+  console.log('');
 }
 
 /**
@@ -10477,6 +10700,7 @@ if (process.env.GSD_TEST_MODE) {
     buildSdkFailFastReport,
     renderSdkFailFastReport,
     classifySdkInstall,
+    readGsdSdkVersion,
     convertClaudeCommandToCodexSkill,
     convertClaudeToOpencodeFrontmatter,
     convertClaudeToKiloFrontmatter,
@@ -10557,6 +10781,7 @@ if (process.env.GSD_TEST_MODE) {
     rewriteLegacyManagedNodeHookCommands,
     buildCodexHookBlock,
     rewriteLegacyCodexHookBlock,
+    cleanupLegacyCodexHooksJson,
   };
 } else {
 

@@ -30,7 +30,6 @@ import {
   phaseTokenMatches,
   toPosixPath,
   planningPaths,
-  stateExtractField,
 } from './helpers.js';
 import { extractFrontmatter } from './frontmatter.js';
 import { extractCurrentMilestone } from './roadmap.js';
@@ -41,6 +40,7 @@ import {
   releaseStateLock,
   stateReplaceField,
 } from './state-mutation.js';
+import { stateExtractField, stateReplaceFieldWithFallback } from './state-document.js';
 import type { QueryHandler } from './utils.js';
 import {
   assertNoNullBytes,
@@ -539,7 +539,15 @@ export const phaseScaffold: QueryHandler = async (args, projectDir, workstream) 
       throw new GSDError('phase and name required for phase-dir scaffold', ErrorClassification.Validation);
     }
     const slug = generatePhaseSlug(name);
-    const dirNameNew = `${padded}-${slug}`;
+    // #3287: apply project_code prefix to stay consistent with phase.add/phase.insert
+    let scaffoldConfig: Record<string, unknown> = {};
+    try {
+      scaffoldConfig = JSON.parse(await readFile(planningPaths(projectDir, workstream).config, 'utf-8'));
+    } catch { /* use defaults */ }
+    const scaffoldProjectCode = (scaffoldConfig.project_code as string) || '';
+    assertSafeProjectCode(scaffoldProjectCode);
+    const scaffoldPrefix = scaffoldProjectCode ? `${scaffoldProjectCode}-` : '';
+    const dirNameNew = `${scaffoldPrefix}${padded}-${slug}`;
     assertSafePhaseDirName(dirNameNew, 'scaffold phase directory');
     const phasesParent = planningPaths(projectDir, workstream).phases;
     await mkdir(phasesParent, { recursive: true });
@@ -950,29 +958,6 @@ export const phaseRemove: QueryHandler = async (args, projectDir, workstream) =>
     },
   };
 };
-
-// ─── stateReplaceFieldWithFallback (inline) ────────────────────────────────
-
-/**
- * Replace a field with fallback field name support.
- *
- * Tries primary first, then fallback. Returns content unchanged if neither matches.
- * Reimplemented here because state-mutation.ts keeps it module-private.
- */
-function stateReplaceFieldWithFallback(
-  content: string,
-  primary: string,
-  fallback: string | null,
-  value: string,
-): string {
-  let result = stateReplaceField(content, primary, value);
-  if (result) return result;
-  if (fallback) {
-    result = stateReplaceField(content, fallback, value);
-    if (result) return result;
-  }
-  return content;
-}
 
 // ─── updatePerformanceMetricsSection ───────────────────────────────────────
 
