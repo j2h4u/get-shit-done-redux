@@ -43,6 +43,8 @@ interface UatItem {
 function stripMarkdownInjection(content: string): string {
   // Pass 1: strip YAML frontmatter region (---\n...\n---)
   let s = content.replace(/^---\r?\n[\s\S]*?\r?\n---/m, '');
+  // Pass 2: strip fenced code blocks (``` ... ```)
+  s = s.replace(/```[\s\S]*?```/g, '');
   return s;
 }
 

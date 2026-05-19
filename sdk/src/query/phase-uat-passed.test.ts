@@ -141,4 +141,40 @@ result: pass
       await rm(localTmp, { recursive: true, force: true });
     }
   });
+
+  it('ignores ### item content inside fenced code blocks', async () => {
+    const localTmp = await mkdtemp(join(tmpdir(), 'gsd-uat-c6-'));
+    try {
+      const phaseDir = join(localTmp, '.planning', 'phases', '05-fenced-injection');
+      await mkdir(phaseDir, { recursive: true });
+      const content = `---
+status: complete
+phase: 5
+source: roadmap
+started: 2026-05-18T00:00:00Z
+updated: 2026-05-18T00:00:00Z
+---
+
+Some prose.
+
+\`\`\`markdown
+### 1. Fenced example
+expected: blah
+result: pass
+\`\`\`
+
+### 1. Real item
+expected: real
+result: pass
+`;
+      await writeFile(join(phaseDir, '05-HUMAN-UAT.md'), content);
+
+      const result = await isPhaseUatPassed(localTmp, '5');
+      expect(result.items.length).toBe(1);
+      expect(result.items[0].name).toBe('Real item');
+      expect(result.passed).toBe(true);
+    } finally {
+      await rm(localTmp, { recursive: true, force: true });
+    }
+  });
 });
