@@ -12,6 +12,7 @@ import { resolvePhaseDir } from './phase-list-queries.js';
 export const REASON_CODE = Object.freeze({
   NON_PASS_RESULT: 'non_pass_result',
   NO_PHASE_DIR: 'no_phase_dir',
+  NO_UAT_FILES: 'no_uat_files',
 } as const);
 
 export type ReasonCode = typeof REASON_CODE[keyof typeof REASON_CODE];
@@ -73,6 +74,15 @@ export async function isPhaseUatPassed(
 
   const files = await readdir(dir);
   const uatFiles = files.filter((f) => f.endsWith('-HUMAN-UAT.md'));
+
+  if (uatFiles.length === 0) {
+    return {
+      passed: false,
+      reasons: [{ code: REASON_CODE.NO_UAT_FILES }],
+      reasonsHuman: [],
+      items: [],
+    };
+  }
 
   const items: UatItem[] = [];
   const reasons: UatReason[] = [];

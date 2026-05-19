@@ -43,6 +43,24 @@ describe('isPhaseUatPassed', () => {
     expect(result.reasons.length).toBe(0);
   });
 
+  it('returns passed=false with NO_UAT_FILES reason when phase dir has no UAT files', async () => {
+    const localTmp = await mkdtemp(join(tmpdir(), 'gsd-uat-c4-'));
+    try {
+      const phaseDir = join(localTmp, '.planning', 'phases', '05-empty');
+      await mkdir(phaseDir, { recursive: true });
+      // Write a non-UAT file to ensure the dir exists but has no *-HUMAN-UAT.md
+      await writeFile(join(phaseDir, '05-PLAN.md'), '# Plan\nNothing here.\n');
+
+      const result = await isPhaseUatPassed(localTmp, '5');
+      expect(result.passed).toBe(false);
+      expect(result.items.length).toBe(0);
+      expect(result.reasons.length).toBe(1);
+      expect(result.reasons[0].code).toBe(REASON_CODE.NO_UAT_FILES);
+    } finally {
+      await rm(localTmp, { recursive: true, force: true });
+    }
+  });
+
   it('returns passed=false with NO_PHASE_DIR reason when phase has no directory', async () => {
     const localTmp = await mkdtemp(join(tmpdir(), 'gsd-uat-c3-'));
     try {
