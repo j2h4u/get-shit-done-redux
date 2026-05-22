@@ -12,13 +12,13 @@ function read(rel) {
 }
 
 describe('bug #3091: sdk install guidance and agent fallbacks use query-capable CLI', () => {
-  test('quick workflow install hint references get-shit-done-cc (not @gsd-build/sdk)', () => {
+  test('quick workflow install hint references get-shit-done-redux (not @gsd-redux/sdk)', () => {
     const content = read('get-shit-done/workflows/quick.md');
-    assert.ok(content.includes('npm install -g get-shit-done-cc'));
-    assert.ok(!content.includes('npm install -g @gsd-build/sdk'));
+    assert.ok(content.includes('npm install -g get-shit-done-redux'));
+    assert.ok(!content.includes('npm install -g @gsd-redux/sdk'));
   });
 
-  test('agent docs no longer reference node_modules/@gsd-build/sdk/dist/cli.js query fallback', () => {
+  test('agent docs no longer reference node_modules/@gsd-redux/sdk/dist/cli.js query fallback', () => {
     const files = [
       'agents/gsd-planner.md',
       'agents/gsd-executor.md',
@@ -26,7 +26,7 @@ describe('bug #3091: sdk install guidance and agent fallbacks use query-capable 
       'agents/gsd-roadmapper.md',
     ];
 
-    const offenders = files.filter((f) => read(f).includes('@gsd-build/sdk/dist/cli.js query'));
-    assert.deepStrictEqual(offenders, [], `stale @gsd-build/sdk query fallback references: ${offenders.join(', ')}`);
+    const offenders = files.filter((f) => read(f).includes('@gsd-redux/sdk/dist/cli.js query'));
+    assert.deepStrictEqual(offenders, [], `stale @gsd-redux/sdk query fallback references: ${offenders.join(', ')}`);
   });
 });

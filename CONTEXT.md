@@ -95,7 +95,7 @@ Workflow contract seam covering agent worktree lifecycle orchestration rules emb
 Adapter Module owning linked-worktree root mapping and metadata-prune policy (`git worktree prune` non-destructive default) for planning/workstream callers.
 
 ### SDK Package Seam Module
-Module owning SDK-to-`get-shit-done-cc` compatibility policy: legacy asset discovery, install-layout probing, transition-only error messaging, and thin Adapter access for CJS-era assets that native SDK Modules have not replaced yet.
+Module owning SDK-to-`get-shit-done-redux` compatibility policy: legacy asset discovery, install-layout probing, transition-only error messaging, and thin Adapter access for CJS-era assets that native SDK Modules have not replaced yet.
 
 ### Runtime-Global Skills Policy Module
 Module owning runtime-aware global skills directory policy for SDK query surfaces. Resolves runtime-global skills bases/skill paths from runtime + env precedence, renders display paths for warnings/manifests, and reports unsupported runtimes with no skills directory.
@@ -193,7 +193,7 @@ Five-axis story decomposition discipline (**S**pike, **P**aths, **I**nterfaces, 
 ## Workspace seams (machine-oriented predicates)
 
 `RULESET.GH.AUTH.DEFAULT=source .envrc GITHUB_TOKEN before gh; exception=ambient allowed only when user explicitly says machine-only fallback`
-`RULESET.CODERABBIT.GUARD.OPEN_PRS=gh pr list --repo gsd-build/get-shit-done --author @me --state open; repeat near end because open PR set can change mid-run`
+`RULESET.CODERABBIT.GUARD.OPEN_PRS=gh pr list --repo GSD-redux/get-shit-done-redux --author @me --state open; repeat near end because open PR set can change mid-run`
 `RULESET.CODERABBIT.GUARD.COMPLETE=required_checks_green && coderabbit_check_pass && graphQL(reviewThreads.unresolved_count)==0`
 `RULESET.CODERABBIT.GUARD.GRAPHQL=reviewThreads(first:100){nodes{id isResolved comments{nodes{author body path line originalLine url}}}}; use unresolved threads as authoritative, not badge text alone`
 `RULESET.CODERABBIT.GUARD.RERUN=after every push wait for CodeRabbit completion, then re-query unresolved threads; CodeRabbit can add new findings after earlier threads were resolved`
@@ -253,10 +253,10 @@ Five-axis story decomposition discipline (**S**pike, **P**aths, **I**nterfaces, 
 `RELEASE-NOTES.STANDARD.heading-level=## for category, ### for subgroup (area), - for bullet`
 `RELEASE-NOTES.STANDARD.bullet-shape=**Bold user-visible change** — explanation of what was broken or what's new, leading with symptom not implementation. Trailing (#NNN) PR ref.`
 `RELEASE-NOTES.STANDARD.subgroups=phase-planning-state | workstream | query-dispatch-cli | code-review | install | capture | docs | architecture | security`
-`RELEASE-NOTES.STANDARD.footer.hotfix=Install/upgrade: \`npx get-shit-done-cc@latest\``
-`RELEASE-NOTES.STANDARD.footer.rc=Install for testing: \`npx get-shit-done-cc@next\` (per branch->dist-tag policy)`
-`RELEASE-NOTES.STANDARD.footer.canary=Install: \`npx get-shit-done-cc@canary\``
-`RELEASE-NOTES.STANDARD.footer.full-changelog=**Full Changelog**: https://github.com/gsd-build/get-shit-done/compare/<prev>...<this>`
+`RELEASE-NOTES.STANDARD.footer.hotfix=Install/upgrade: \`npx get-shit-done-redux@latest\``
+`RELEASE-NOTES.STANDARD.footer.rc=Install for testing: \`npx get-shit-done-redux@next\` (per branch->dist-tag policy)`
+`RELEASE-NOTES.STANDARD.footer.canary=Install: \`npx get-shit-done-redux@canary\``
+`RELEASE-NOTES.STANDARD.footer.full-changelog=**Full Changelog**: https://github.com/GSD-redux/get-shit-done-redux/compare/<prev>...<this>`
 `RELEASE-NOTES.STANDARD.intro=optional one-paragraph framing for RC/feature releases; omit for pure-fix hotfixes`
 
 `RELEASE-NOTES.SOURCE.commits=git log <prev-tag>..<this-tag> --pretty=format:'%s%n%n%b' --no-merges`
@@ -273,12 +273,12 @@ Five-axis story decomposition discipline (**S**pike, **P**aths, **I**nterfaces, 
 `RELEASE-NOTES.ANTI-PATTERN.implementation-first=do not lead bullet with file path or function name; lead with symptom/user-visible behavior`
 `RELEASE-NOTES.ANTI-PATTERN.risk-commentary=do not include "may break", "be careful", "test thoroughly" - per global CLAUDE.md no-risk-commentary rule`
 
-`RELEASE-NOTES.EXAMPLE.hotfix=v1.41.1 (https://github.com/gsd-build/get-shit-done/releases/tag/v1.41.1) - 14 fixes grouped by 6 subgroups`
-`RELEASE-NOTES.EXAMPLE.rc=v1.42.0-rc1 (https://github.com/gsd-build/get-shit-done/releases/tag/v1.42.0-rc1) - intro + Added/Changed/Fixed/Documentation taxonomy`
+`RELEASE-NOTES.EXAMPLE.hotfix=v1.41.1 (https://github.com/GSD-redux/get-shit-done-redux/releases/tag/v1.41.1) - 14 fixes grouped by 6 subgroups`
+`RELEASE-NOTES.EXAMPLE.rc=v1.42.0-rc1 (https://github.com/GSD-redux/get-shit-done-redux/releases/tag/v1.42.0-rc1) - intro + Added/Changed/Fixed/Documentation taxonomy`
 `RELEASE-NOTES.EXAMPLE.minor-auto-acceptable=v1.41.0 - kept auto-generated body; many small fixes with clean conventional-commit titles`
 
-`RELEASE-NOTES.TEMPLATE.hotfix=## Fixed\n\n### <subgroup>\n- **<bold change>** — <explanation>. (#<PR>)\n\n---\n\nInstall/upgrade: \`npx get-shit-done-cc@latest\`\n\n**Full Changelog**: <compare-url>`
-`RELEASE-NOTES.TEMPLATE.rc=<one-paragraph intro>\n\n## Added\n### <subgroup>\n- **<change>** — <explanation>. (#<PR>)\n\n## Changed\n### Architecture\n- **<refactor>** — <user-visible benefit>. (#<PR>)\n\n## Fixed\n### <subgroup>\n- **<fix>** — <explanation>. (#<PR>)\n\n## Documentation\n- **<docs change>** — <reason>. (#<PR>)\n\n---\n\nThis is a release candidate. Install for testing:\n\`\`\`bash\nnpx get-shit-done-cc@next\n\`\`\`\n\n**Full Changelog**: <compare-url>`
+`RELEASE-NOTES.TEMPLATE.hotfix=## Fixed\n\n### <subgroup>\n- **<bold change>** — <explanation>. (#<PR>)\n\n---\n\nInstall/upgrade: \`npx get-shit-done-redux@latest\`\n\n**Full Changelog**: <compare-url>`
+`RELEASE-NOTES.TEMPLATE.rc=<one-paragraph intro>\n\n## Added\n### <subgroup>\n- **<change>** — <explanation>. (#<PR>)\n\n## Changed\n### Architecture\n- **<refactor>** — <user-visible benefit>. (#<PR>)\n\n## Fixed\n### <subgroup>\n- **<fix>** — <explanation>. (#<PR>)\n\n## Documentation\n- **<docs change>** — <reason>. (#<PR>)\n\n---\n\nThis is a release candidate. Install for testing:\n\`\`\`bash\nnpx get-shit-done-redux@next\n\`\`\`\n\n**Full Changelog**: <compare-url>`
 
 `RELEASE-NOTES.RELEASE-STREAM.dev-branch=canary dist-tag (only); install via @canary`
 `RELEASE-NOTES.RELEASE-STREAM.main-branch=next (RCs) + latest (stable); install via @next or @latest`
@@ -553,7 +553,7 @@ Migration plan: Phase 1 (#3465) seam additions complete; Phase 2 (#3466) targets
 `DEFECT.STACKED-PR-CANNOT-STAND-ALONE.anti-pattern=blindly running git rebase --onto origin/main on the patch branch — produces "conflicts" that are really "the scaffolding doesn't exist yet"; resolving them means reinventing the upstream PR's contribution, which duplicates work and creates merge hazards. Recognize the shape early via cat-file probe before rebasing`
 
 `DEFECT.CANARY-VERSION-LEAK.symptom=package.json version on main carries a -canary.<N> suffix that per release policy belongs to the dev branch only; nothing publishable depends on the version string at runtime, but every consumer of the version metadata (release flow, install banners, statusline) sees the dev-channel label`
-`DEFECT.CANARY-VERSION-LEAK.examples=2026-05-16 audit found origin/main + origin/feat/3575-enforcement-hardening both at "version": "1.50.0-canary.0" in sdk/package.json AND root package.json; npm view @gsd-build/sdk versions returned ["0.1.0"] only, dist-tag latest=0.1.0, @1.50.0-canary.0 404 — confirms the string is metadata-only, never published. git log -S '"version": "1.50.0-canary.0"' origin/main blamed commit 2d32ad82 fix(plan-phase)... (#3206), a fix PR that accidentally carried the version bump from a dev-branch base`
+`DEFECT.CANARY-VERSION-LEAK.examples=2026-05-16 audit found origin/main + origin/feat/3575-enforcement-hardening both at "version": "1.50.0-canary.0" in sdk/package.json AND root package.json; npm view @gsd-redux/sdk versions returned ["0.1.0"] only, dist-tag latest=0.1.0, @1.50.0-canary.0 404 — confirms the string is metadata-only, never published. git log -S '"version": "1.50.0-canary.0"' origin/main blamed commit 2d32ad82 fix(plan-phase)... (#3206), a fix PR that accidentally carried the version bump from a dev-branch base`
 `DEFECT.CANARY-VERSION-LEAK.detect=jq -r .version package.json sdk/package.json on origin/main shows a -canary suffix; OR npm view <pkg> dist-tags shows latest != main's version`
 `DEFECT.CANARY-VERSION-LEAK.fix-forward=open a chore/* PR against main that resets the version strings to the canonical pre-canary stable; rebase open PRs to pick it up; gate at PR open with a CI check that rejects -canary versions on PRs targeting main`
 `DEFECT.CANARY-VERSION-LEAK.cross-ref=RELEASE-NOTES.RELEASE-STREAM.dev-branch=canary dist-tag (only); this defect is the live counter-example to that rule`
@@ -594,7 +594,7 @@ Migration plan: Phase 1 (#3465) seam additions complete; Phase 2 (#3466) targets
 `DEFECT.GSD-TEST-CONCURRENT-OUTPUT-COLLISION.root-cause=gsd-test-summary lines 126-127 default LOCAL_OUT/DOCKER_OUT to fixed /tmp/gsd-test-{local,docker}.jsonl; concurrent line-buffered writers interleave bytes mid-multibyte → split UTF-8 sequence → decoder explodes on f.read()`
 `DEFECT.GSD-TEST-CONCURRENT-OUTPUT-COLLISION.detect=two gsd-test-summary --both runs in flight; UnicodeDecodeError in parse_events_from_string traceback; /tmp/gsd-test-*.jsonl size mismatch vs total events emitted`
 `DEFECT.GSD-TEST-CONCURRENT-OUTPUT-COLLISION.fix-forward=set per-invocation LOCAL_OUT=/tmp/gsd-test-<tag>-local.jsonl DOCKER_OUT=/tmp/gsd-test-<tag>-docker.jsonl env vars; or serialize the runs; upstream fix tracked in #3545 (default to tempfile.mkstemp + advisory flock)`
-`DEFECT.GSD-TEST-CONCURRENT-OUTPUT-COLLISION.upstream=gsd-build/get-shit-done#3545`
+`DEFECT.GSD-TEST-CONCURRENT-OUTPUT-COLLISION.upstream=GSD-redux/get-shit-done-redux#3545`
 `DEFECT.SUBAGENT-LONG-RUNNING-BG-STALL.symptom=spawned sub-agent kicks off gsd-test-summary --both via Bash run_in_background, then stops on the harness "you will be notified" message; never receives the notification because cross-turn task-notifications are only delivered to the top-level orchestrator`
 `DEFECT.SUBAGENT-LONG-RUNNING-BG-STALL.detect=sub-agent returns prematurely with text like "I should wait for the notification per CLAUDE.md" and incomplete work in its worktree (commits absent, push absent, PR absent)`
 `DEFECT.SUBAGENT-LONG-RUNNING-BG-STALL.fix-forward=keep gsd-test-summary --both at the top-level orchestrator; sub-agents either run it foreground with timeout: 1500000 (25min) and block, OR delegate the test step back to the orchestrator (write commits + return); never have a sub-agent fire-and-await a backgrounded long task`

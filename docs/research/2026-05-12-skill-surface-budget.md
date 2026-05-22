@@ -1,7 +1,7 @@
 # Skill surface budget — research memo
 
 **Date:** 2026-05-12
-**Author:** triage analysis for issue [#3408](https://github.com/gsd-build/get-shit-done/issues/3408)
+**Author:** triage analysis for issue [#3408](https://github.com/GSD-redux/get-shit-done-redux/issues/3408)
 **Status:** Research input for ADR-0010
 **Reading time:** ~15 min
 
@@ -186,11 +186,11 @@ Instead of one shared `skillListingBudgetFraction`, give each plugin a dedicated
 
 ### Option F — Sub-plugins / split distribution
 
-Publish GSD as multiple npm packages: `get-shit-done-cc-core`, `get-shit-done-cc-milestones`, `get-shit-done-cc-research`, etc. Users install only what they need.
+Publish GSD as multiple npm packages: `get-shit-done-redux-core`, `get-shit-done-redux-milestones`, `get-shit-done-redux-research`, etc. Users install only what they need.
 
 | Dimension | Assessment |
 |---|---|
-| User UX | Reasonable for advanced users; confusing for first-time installers. Needs a meta-package (`get-shit-done-cc`) that depends on the slim ones — analogous to VS Code extension packs. |
+| User UX | Reasonable for advanced users; confusing for first-time installers. Needs a meta-package (`get-shit-done-redux`) that depends on the slim ones — analogous to VS Code extension packs. |
 | Implementation cost | **High.** Multi-package build pipeline, version sync across packages, changelog routing, install-script forking. |
 | Dependency safety | npm semver carries the contract; cross-package refs become real `require()` calls. |
 | Token savings | Same as Option A in practice — token savings come from choosing not to install, not from the package boundary. |
@@ -260,7 +260,7 @@ Phase 2 — runtime surface command (follow-up ADR or amendment):
 
 ## 10. References
 
-- Issue: [#3408](https://github.com/gsd-build/get-shit-done/issues/3408)
+- Issue: [#3408](https://github.com/GSD-redux/get-shit-done-redux/issues/3408)
 - Existing seam: `get-shit-done/bin/lib/install-profiles.cjs`
 - Description lint: `scripts/lint-descriptions.cjs`
 - Install dispatcher: `bin/install.js:123` (mode parsing), `bin/install.js:8167-8207` (minimal staging)

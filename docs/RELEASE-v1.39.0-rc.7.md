@@ -3,7 +3,7 @@
 Pre-release candidate. Published to npm under the `next` tag.
 
 ```bash
-npx get-shit-done-cc@next
+npx get-shit-done-redux@next
 ```
 
 ---
@@ -12,16 +12,16 @@ npx get-shit-done-cc@next
 
 rc.7 is the first RC in the 1.39.0 train that rolls in the post-rc.5 fixes from
 `main`. rc.6 was content-identical to rc.5 (`release/1.39.0` was bumped without
-first being merged with `main` — see [#2856](https://github.com/gsd-build/get-shit-done/issues/2856)).
+first being merged with `main` — see [#2856](https://github.com/GSD-redux/get-shit-done-redux/issues/2856)).
 rc.7 syncs the release branch with `main` so all of the work below actually
 reaches the registry.
 
 ### Added
 
 - **Manual canary release workflow** — `.github/workflows/canary.yml` publishes
-  `{base}-canary.{N}` builds of `get-shit-done-cc` under the `canary` dist-tag on
+  `{base}-canary.{N}` builds of `get-shit-done-redux` under the `canary` dist-tag on
   demand via `workflow_dispatch` (manual trigger only). Optional `dry_run` boolean.
-  ([#2828](https://github.com/gsd-build/get-shit-done/issues/2828))
+  ([#2828](https://github.com/GSD-redux/get-shit-done-redux/issues/2828))
 
 ### Fixed
 
@@ -29,74 +29,74 @@ reaches the registry.
   inside fenced code blocks** — the milestone-end search now scans line-by-line while
   tracking ` ``` ` / `~~~` fence state, so a line like `# Ops runbook (v1.0 compat)`
   inside a code block no longer acts as a milestone boundary.
-  ([#2787](https://github.com/gsd-build/get-shit-done/issues/2787))
+  ([#2787](https://github.com/GSD-redux/get-shit-done-redux/issues/2787))
 - **`audit-uat` parser reads `human_verification:` from frontmatter array** — the
   previous body-only regex was too strict and missed valid UAT items declared in
   YAML frontmatter, surfacing false-positive open gaps at every milestone-completion
-  audit. ([#2788](https://github.com/gsd-build/get-shit-done/issues/2788))
+  audit. ([#2788](https://github.com/GSD-redux/get-shit-done-redux/issues/2788))
 - **Skill description anti-patterns trimmed; ≤ 100-char budget enforced** — three
   anti-patterns eliminated across `commands/gsd/*.md`: flag documentation already in
   `argument-hint:`, `Triggers:` keyword-stuffing lists, and numbered enumeration. New
   CI lint gate `npm run lint:descriptions` fails if any description exceeds 100
-  chars. ([#2789](https://github.com/gsd-build/get-shit-done/issues/2789))
-- **`gsd-sdk` binary collision with `@gsd-build/sdk` resolved** — workstream-aware
+  chars. ([#2789](https://github.com/GSD-redux/get-shit-done-redux/issues/2789))
+- **`gsd-sdk` binary collision with `@gsd-redux/sdk` resolved** — workstream-aware
   query registry now respects the `GSD_WORKSTREAM` env var; `gsd-tools` bin alias
-  added. ([#2791](https://github.com/gsd-build/get-shit-done/issues/2791))
+  added. ([#2791](https://github.com/GSD-redux/get-shit-done-redux/issues/2791))
 - **`OpenCode` agents embed `model_profile_overrides.opencode.<tier>`** — per-tier
   model overrides set via `/gsd-settings-advanced` are now propagated into generated
-  agent files. ([#2794](https://github.com/gsd-build/get-shit-done/issues/2794))
+  agent files. ([#2794](https://github.com/GSD-redux/get-shit-done-redux/issues/2794))
 - **`roadmap update-plan-progress` accepts `--phase` flag form** — SDK arg-parsing
   regression in v0.1.0 silently dropped `--phase`/`--name`/`--plans` flags, causing
-  STATE.md corruption. ([#2796](https://github.com/gsd-build/get-shit-done/issues/2796))
+  STATE.md corruption. ([#2796](https://github.com/GSD-redux/get-shit-done-redux/issues/2796))
 - **`context_window` added to `VALID_CONFIG_KEYS` allowlist** —
   `/gsd-settings-advanced` could not set `context_window` because the key was missing
   from the allowlist used by `config-set` validation.
-  ([#2798](https://github.com/gsd-build/get-shit-done/issues/2798))
+  ([#2798](https://github.com/GSD-redux/get-shit-done-redux/issues/2798))
 - **`gsd-tools init` dispatches `ingest-docs` handler** — `/gsd-ingest-docs` was
   broken in v1.38.5 because the workflow called the new tool but no `ingest-docs`
-  init handler was registered. ([#2801](https://github.com/gsd-build/get-shit-done/issues/2801))
+  init handler was registered. ([#2801](https://github.com/GSD-redux/get-shit-done-redux/issues/2801))
 - **`config-get` honors `--default <value>` flag** — fallback for missing keys
-  ported from CJS into the SDK. ([#2803](https://github.com/gsd-build/get-shit-done/issues/2803))
+  ported from CJS into the SDK. ([#2803](https://github.com/GSD-redux/get-shit-done-redux/issues/2803))
 - **`find-phase` returns `null` for archived phases** — when the current-milestone
   phase had no directory yet, `init.plan-phase` / `init.execute-phase` returned the
   archived prior-milestone directory instead of `null`, causing wrong-phase work.
-  ([#2805](https://github.com/gsd-build/get-shit-done/issues/2805))
+  ([#2805](https://github.com/GSD-redux/get-shit-done-redux/issues/2805))
 - **SKILL.md frontmatter `name:` migrated to hyphen form** — files that still used
   the deprecated colon form (`gsd:cmd`) caused autocomplete to suggest `/gsd:command`.
-  ([#2808](https://github.com/gsd-build/get-shit-done/issues/2808))
+  ([#2808](https://github.com/GSD-redux/get-shit-done-redux/issues/2808))
 - **`gsd-sdk` resolvable in local-mode installs** — the previous `isLocal`
   short-circuit returned before the PATH probe + self-link could run. When
   `sdk/dist/cli.js` is present, local installs now run the same probe-and-link flow
-  as global installs. ([#2829](https://github.com/gsd-build/get-shit-done/issues/2829))
+  as global installs. ([#2829](https://github.com/GSD-redux/get-shit-done-redux/issues/2829))
 - **OpenCode `@file` references use absolute paths on all platforms** — OpenCode
   does not shell-expand `$HOME` in `@file` references on any platform; the
   Windows-only guard from #2376 left macOS/Linux producing literal `@$HOME/...`
   strings. Guard now applies unconditionally for OpenCode.
-  ([#2831](https://github.com/gsd-build/get-shit-done/issues/2831))
+  ([#2831](https://github.com/GSD-redux/get-shit-done-redux/issues/2831))
 - **`gsd-sdk auto` detects Codex runtime correctly** — `auto` mode ignored
   `runtime: codex` and routed through `@anthropic-ai/claude-agent-sdk`, producing
   the `[FAILED] $0.00 0.1s` symptom on autonomous runs. New `runtime-gate` raises a
   clear error for non-Claude runtimes; `resolveModel()` honours `GSD_RUNTIME` env
   precedence and never injects a Claude profile id under non-Claude runtimes.
-  ([#2832](https://github.com/gsd-build/get-shit-done/issues/2832))
+  ([#2832](https://github.com/GSD-redux/get-shit-done-redux/issues/2832))
 - **CR-INTEGRATION tests aligned with hyphen-form skill names** — tests now parse
   `Skill(skill="...")` invocations structurally and reject the legacy colon form.
-  ([#2835](https://github.com/gsd-build/get-shit-done/issues/2835))
+  ([#2835](https://github.com/GSD-redux/get-shit-done-redux/issues/2835))
 - **`audit-open` quick-task scanner accepts `${quick_id}-SUMMARY.md`** — the
   bare-`SUMMARY.md` check produced false-positive `status: missing` for every
   documented quick task. UAT terminal-status enum also adds `resolved` (matches
   `execute-phase.md`'s post-gap-closure terminal).
-  ([#2836](https://github.com/gsd-build/get-shit-done/issues/2836))
+  ([#2836](https://github.com/GSD-redux/get-shit-done-redux/issues/2836))
 - **`quick.md` / `execute-phase.md` SUMMARY rescue handles gitignored `.planning/`** —
   rescue blocks used `git ls-files --exclude-standard`, silently no-op'ing when
   `.planning/` was excluded; the worktree was then deleted with the SUMMARY.
   Replaced with filesystem-level `find` + idempotent `cp`.
-  ([#2838](https://github.com/gsd-build/get-shit-done/issues/2838))
+  ([#2838](https://github.com/GSD-redux/get-shit-done-redux/issues/2838))
 - **`/gsd-code-review-fix` cleanup tail is transactional** — JSON recovery sentinel
   at `${phase_dir}/.review-fix-recovery-pending.json` is written after `git worktree
   add` succeeds and removed only after `git worktree remove` returns. New runs that
   find a pre-existing sentinel force-remove the orphan worktree, making the agent
-  self-healing across crashes. ([#2839](https://github.com/gsd-build/get-shit-done/issues/2839))
+  self-healing across crashes. ([#2839](https://github.com/GSD-redux/get-shit-done-redux/issues/2839))
 
 ---
 
@@ -117,7 +117,7 @@ without first being merged with `main`. See
 
 ### Fixed
 
-**Codex hooks migrator correctness hardening** ([#2809](https://github.com/gsd-build/get-shit-done/issues/2809))
+**Codex hooks migrator correctness hardening** ([#2809](https://github.com/GSD-redux/get-shit-done-redux/issues/2809))
 
 Five edge-cases in the `[[hooks.<Event>]]` → `[[hooks.<Event>.hooks]]` two-level
 nested schema migration path, discovered across five rounds of code review:
@@ -136,7 +136,7 @@ nested schema migration path, discovered across five rounds of code review:
 
 ### Added
 
-**`--minimal` install flag** (alias `--core-only`) ([#2762](https://github.com/gsd-build/get-shit-done/issues/2762))
+**`--minimal` install flag** (alias `--core-only`) ([#2762](https://github.com/GSD-redux/get-shit-done-redux/issues/2762))
 
 Writes only the six core skills needed to run the main workflow loop:
 `new-project`, `discuss-phase`, `plan-phase`, `execute-phase`, `help`, `update`.
@@ -152,7 +152,7 @@ The install manifest records `mode: "minimal" | "full"`. Run `gsd update` withou
 
 ### Fixed (rc.4)
 
-**Codex install no longer corrupts `~/.codex/config.toml`** ([#2760](https://github.com/gsd-build/get-shit-done/issues/2760))
+**Codex install no longer corrupts `~/.codex/config.toml`** ([#2760](https://github.com/GSD-redux/get-shit-done-redux/issues/2760))
 
 The installer now strips legacy `[agents]` blocks, emits hooks in the user's
 existing shape, migrates legacy `[hooks.<Event>]` map format to `[[hooks.<Event>]]`,
@@ -165,16 +165,16 @@ with a strict TOML parser.
 
 ```bash
 # npm
-npm install -g get-shit-done-cc@next
+npm install -g get-shit-done-redux@next
 
 # npx (one-shot)
-npx get-shit-done-cc@next
+npx get-shit-done-redux@next
 ```
 
 To pin to this exact RC:
 
 ```bash
-npm install -g get-shit-done-cc@1.39.0-rc.7
+npm install -g get-shit-done-redux@1.39.0-rc.7
 ```
 
 ---

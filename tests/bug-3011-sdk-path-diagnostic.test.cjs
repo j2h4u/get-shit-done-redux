@@ -5,7 +5,7 @@ process.env.GSD_TEST_MODE = '1';
 /**
  * Regression test for #3011: SDK not found.
  *
- * Reporter (Windows / PowerShell 7) ran `npx get-shit-done-cc@latest`,
+ * Reporter (Windows / PowerShell 7) ran `npx get-shit-done-redux@latest`,
  * upgrade reported success, but `gsd-sdk` could not be resolved by Claude
  * Code, Git Bash, PowerShell, or WSL. The previous diagnostic was a
  * generic "not on your PATH" with no actionable info; the user couldn't
@@ -28,7 +28,7 @@ describe('Bug #3011: formatSdkPathDiagnostic — Windows shim location and PATH 
     const ir = formatSdkPathDiagnostic({
       shimDir: 'C:\\Users\\me\\AppData\\Roaming\\npm',
       platform: 'win32',
-      runDir: 'C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\get-shit-done-cc\\bin',
+      runDir: 'C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\get-shit-done-redux\\bin',
     });
     assert.equal(ir.shimLocationLine,
       'Shim written to: C:\\Users\\me\\AppData\\Roaming\\npm');
@@ -104,7 +104,7 @@ describe('Bug #3011: formatSdkPathDiagnostic — POSIX action lines', () => {
     const ir = formatSdkPathDiagnostic({
       shimDir: '/home/me/.local/bin',
       platform: 'linux',
-      runDir: '/home/me/.local/lib/node_modules/get-shit-done-cc/bin',
+      runDir: '/home/me/.local/lib/node_modules/get-shit-done-redux/bin',
     });
     const exports_ = ir.actionLines.filter(l => l.startsWith('export PATH='));
     assert.equal(exports_.length, 1, `expected 1 export line, got: ${JSON.stringify(ir.actionLines)}`);
@@ -115,7 +115,7 @@ describe('Bug #3011: formatSdkPathDiagnostic — POSIX action lines', () => {
     const ir = formatSdkPathDiagnostic({
       shimDir: '/usr/local/bin',
       platform: 'darwin',
-      runDir: '/usr/local/lib/node_modules/get-shit-done-cc/bin',
+      runDir: '/usr/local/lib/node_modules/get-shit-done-redux/bin',
     });
     assert.ok(ir.actionLines.some(l => l === 'export PATH="/usr/local/bin:$PATH"'));
   });
@@ -137,7 +137,7 @@ describe('Bug #3011: formatSdkPathDiagnostic — fallback when shimDir is null',
       platform: 'win32',
       runDir: 'C:\\some\\path',
     });
-    assert.ok(ir.actionLines.some(l => l.includes('npm install -g get-shit-done-cc')));
+    assert.ok(ir.actionLines.some(l => l.includes('npm install -g get-shit-done-redux')));
   });
 });
 
@@ -146,7 +146,7 @@ describe('Bug #3011: formatSdkPathDiagnostic — npx-cache detection', () => {
     const ir = formatSdkPathDiagnostic({
       shimDir: '/home/me/.local/bin',
       platform: 'linux',
-      runDir: '/home/me/.npm/_npx/abc123/node_modules/get-shit-done-cc/bin',
+      runDir: '/home/me/.npm/_npx/abc123/node_modules/get-shit-done-redux/bin',
     });
     assert.equal(ir.isNpx, true);
     assert.ok(ir.npxNoteLines.length >= 2,
@@ -159,7 +159,7 @@ describe('Bug #3011: formatSdkPathDiagnostic — npx-cache detection', () => {
     const ir = formatSdkPathDiagnostic({
       shimDir: 'C:\\Users\\me\\AppData\\Roaming\\npm',
       platform: 'win32',
-      runDir: 'C:\\Users\\me\\AppData\\Local\\npm-cache\\_npx\\abc123\\node_modules\\get-shit-done-cc\\bin',
+      runDir: 'C:\\Users\\me\\AppData\\Local\\npm-cache\\_npx\\abc123\\node_modules\\get-shit-done-redux\\bin',
     });
     assert.equal(ir.isNpx, true);
   });
@@ -168,7 +168,7 @@ describe('Bug #3011: formatSdkPathDiagnostic — npx-cache detection', () => {
     const ir = formatSdkPathDiagnostic({
       shimDir: 'C:\\Users\\me\\AppData\\Roaming\\npm',
       platform: 'win32',
-      runDir: 'C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\get-shit-done-cc\\bin',
+      runDir: 'C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\get-shit-done-redux\\bin',
     });
     assert.equal(ir.isNpx, false);
     assert.deepEqual(ir.npxNoteLines, []);

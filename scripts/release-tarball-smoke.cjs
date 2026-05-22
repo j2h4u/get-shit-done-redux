@@ -30,7 +30,7 @@
  *     - Assert commands/gsd/<cmd>.md exists in the installed package
  *     - Parse the .md for a workflow @-import or inline reference
  *     - Assert the referenced workflow .md exists in the installed package
- *   If 'init' is in lifecycleCommands, runs `get-shit-done-cc --local --claude`
+ *   If 'init' is in lifecycleCommands, runs `get-shit-done-redux --local --claude`
  *   in fixtureDir to verify the installer is callable (INIT_FAILED on crash).
  *   Non-interactive: --local --claude flags skip all prompts.
  *
@@ -78,14 +78,14 @@ const SMOKE = Object.freeze({
 // ---------------------------------------------------------------------------
 
 /**
- * Locate the lib/node_modules/get-shit-done-cc package root inside an
+ * Locate the lib/node_modules/get-shit-done-redux package root inside an
  * npm --prefix install directory.
  */
 function pkgRoot(installPrefix) {
-  // POSIX: <prefix>/lib/node_modules/get-shit-done-cc
-  // Windows: <prefix>/node_modules/get-shit-done-cc
-  const posix = path.join(installPrefix, 'lib', 'node_modules', 'get-shit-done-cc');
-  const win = path.join(installPrefix, 'node_modules', 'get-shit-done-cc');
+  // POSIX: <prefix>/lib/node_modules/get-shit-done-redux
+  // Windows: <prefix>/node_modules/get-shit-done-redux
+  const posix = path.join(installPrefix, 'lib', 'node_modules', 'get-shit-done-redux');
+  const win = path.join(installPrefix, 'node_modules', 'get-shit-done-redux');
   return fs.existsSync(posix) ? posix : win;
 }
 
@@ -108,7 +108,7 @@ function findGsdSdkBin(installPrefix) {
 }
 
 /**
- * Locate the get-shit-done-cc installer binary (the symlink in <prefix>/bin/).
+ * Locate the get-shit-done-redux installer binary (the symlink in <prefix>/bin/).
  */
 function findInstallerBin(installPrefix) {
   const binDir = process.platform === 'win32'
@@ -116,8 +116,8 @@ function findInstallerBin(installPrefix) {
     : path.join(installPrefix, 'bin');
 
   const candidates = process.platform === 'win32'
-    ? [path.join(binDir, 'get-shit-done-cc.cmd'), path.join(binDir, 'get-shit-done-cc')]
-    : [path.join(binDir, 'get-shit-done-cc')];
+    ? [path.join(binDir, 'get-shit-done-redux.cmd'), path.join(binDir, 'get-shit-done-redux')]
+    : [path.join(binDir, 'get-shit-done-redux')];
 
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
@@ -386,7 +386,7 @@ function runSmoke({
         code: SMOKE.INIT_FAILED,
         details: {
           ...details,
-          reason: 'get-shit-done-cc binary not found in installPrefix',
+          reason: 'get-shit-done-redux binary not found in installPrefix',
           installPrefix,
         },
       };

@@ -71,7 +71,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git config user.email "ci@gsd-build"
+          git config user.email "ci@gsd-redux"
           git config user.name "CI Rebase Check"
           git fetch origin main
           if ! git merge --no-edit --no-ff origin/main; then
@@ -208,7 +208,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git config user.email "ci@gsd-build"
+          git config user.email "ci@gsd-redux"
           git config user.name "CI Rebase Check"
           git fetch origin main
           if ! git merge --no-edit --no-ff origin/main; then

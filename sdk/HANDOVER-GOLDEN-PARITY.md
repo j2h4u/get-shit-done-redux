@@ -30,7 +30,7 @@ Use this document at the start of a new session so work continues in context wit
    - `QUERY-HANDLERS.md` is maintained and current.
 
 3. **Track D — CJS deprecation headers** (done)
-   - `gsd-tools.cjs` already has `@deprecated` JSDoc header (lines 3-6) pointing to `gsd-sdk query` and `@gsd-build/sdk`.
+   - `gsd-tools.cjs` already has `@deprecated` JSDoc header (lines 3-6) pointing to `gsd-sdk query` and `@gsd-redux/sdk`.
    - No additional CJS file deletion in scope per #2302.
 
 4. **CI verification** (should run before any PR)
@@ -55,7 +55,7 @@ Use this document at the start of a new session so work continues in context wit
 
 - **Workspace:** `D:\Repos\get-shit-done` (GSD PBR backport initiative).
 - **Feature branch:** `feat/sdk-phase3-query-layer` (62 commits ahead of `main`; confirm against `origin` before merging).
-- **Upstream PRs:** `gsd-build/get-shit-done` issue #2302.
+- **Upstream PRs:** `GSD-redux/get-shit-done-redux` issue #2302.
 
 ---
 

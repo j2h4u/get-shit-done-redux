@@ -31,8 +31,8 @@ function parseArgs(argv) {
     fromRef: null,
     toRef: null,
     output: null,
-    repoSlug: 'gsd-build/get-shit-done',
-    installCommand: 'npx get-shit-done-cc@latest',
+    repoSlug: 'GSD-redux/get-shit-done-redux',
+    installCommand: 'npx get-shit-done-redux@latest',
     json: false,
   };
   if (argv.length === 0) return { ok: true, opts };

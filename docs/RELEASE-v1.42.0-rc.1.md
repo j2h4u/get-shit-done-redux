@@ -3,9 +3,9 @@
 First release candidate for the **1.42.0** train. Published to npm under the `next` dist-tag.
 
 ```bash
-npx get-shit-done-cc@next
+npx get-shit-done-redux@next
 # or pin exact:
-npm install -g get-shit-done-cc@1.42.0-rc1
+npm install -g get-shit-done-redux@1.42.0-rc1
 ```
 
 > **Release-candidate stream caveat.** RCs come from `main` and are the staging stream for the next stable `latest`. They are stable enough for everyday use but may carry bake items resolved before the matching `vX.Y.0` is published. See [CANARY.md](CANARY.md) for the stream policy.
@@ -16,7 +16,7 @@ npm install -g get-shit-done-cc@1.42.0-rc1
 
 1.42.0-rc.1 is the first cut of the 1.42 train. The headline addition is a **package legitimacy gate against slopsquatting** — a three-layer defense across the research → plan → execute pipeline that prevents AI-hallucinated package names from flowing undetected into `npm install`. Underneath that, two structural refactors deepen the **SDK package seam** and the **phase lifecycle seams** so future work has cleaner module boundaries.
 
-This RC also rolls up every fix that shipped in [v1.41.1](https://github.com/gsd-build/get-shit-done/releases/tag/v1.41.1). Those fixes are listed in the v1.41.1 notes and on the GitHub release page; this document is scoped to the **new features** in 1.42.0.
+This RC also rolls up every fix that shipped in [v1.41.1](https://github.com/GSD-redux/get-shit-done-redux/releases/tag/v1.41.1). Those fixes are listed in the v1.41.1 notes and on the GitHub release page; this document is scoped to the **new features** in 1.42.0.
 
 ---
 
@@ -24,7 +24,7 @@ This RC also rolls up every fix that shipped in [v1.41.1](https://github.com/gsd
 
 ### Security
 
-#### Package legitimacy gate against slopsquatting ([#3215](https://github.com/gsd-build/get-shit-done/pull/3215))
+#### Package legitimacy gate against slopsquatting ([#3215](https://github.com/GSD-redux/get-shit-done-redux/pull/3215))
 
 A three-layer defense across the research → plan → execute pipeline. Before this release, a hallucinated package name that passed `npm view` could flow undetected into `gsd-executor` running `npm install <malicious-pkg>` with no human gate. The gate closes that path:
 
@@ -38,7 +38,7 @@ A three-layer defense across the research → plan → execute pipeline. Before 
 
 **Documentation.** `docs/USER-GUIDE.md` has a new "Package Legitimacy Gate" subsection in the Security section; `docs/COMMANDS.md` notes the gate on `/gsd-plan-phase`; `docs/ARCHITECTURE.md` documents the gate before the Security Hooks section and updates the plan-phase pipeline diagram with the gate steps.
 
-Closes [#2827](https://github.com/gsd-build/get-shit-done/issues/2827).
+Closes [#2827](https://github.com/GSD-redux/get-shit-done-redux/issues/2827).
 
 ---
 
@@ -46,7 +46,7 @@ Closes [#2827](https://github.com/gsd-build/get-shit-done/issues/2827).
 
 ### Architecture
 
-#### SDK package seam deepened; runtime-global skills policy converged ([#3238](https://github.com/gsd-build/get-shit-done/pull/3238))
+#### SDK package seam deepened; runtime-global skills policy converged ([#3238](https://github.com/GSD-redux/get-shit-done-redux/pull/3238))
 
 Concentrates two areas that were previously scattered across the codebase:
 
@@ -55,9 +55,9 @@ Concentrates two areas that were previously scattered across the codebase:
 
 The CONTEXT.md domain glossary is updated with both Module entries so future work points at the canonical seams instead of re-deriving the boundaries.
 
-Closes [#3237](https://github.com/gsd-build/get-shit-done/issues/3237). Refs [#3234](https://github.com/gsd-build/get-shit-done/issues/3234).
+Closes [#3237](https://github.com/GSD-redux/get-shit-done-redux/issues/3237). Refs [#3234](https://github.com/GSD-redux/get-shit-done-redux/issues/3234).
 
-#### Phase lifecycle seams deepened ([#3267](https://github.com/gsd-build/get-shit-done/pull/3267))
+#### Phase lifecycle seams deepened ([#3267](https://github.com/GSD-redux/get-shit-done-redux/pull/3267))
 
 `phase-lifecycle.ts` becomes a thin public orchestrator. Three new modules are extracted:
 
@@ -67,14 +67,14 @@ Closes [#3237](https://github.com/gsd-build/get-shit-done/issues/3237). Refs [#3
 
 Backward-compatible re-exports are preserved on `phase-lifecycle.ts` so existing callers continue to work; new callers should import from the dedicated modules.
 
-Closes [#3270](https://github.com/gsd-build/get-shit-done/issues/3270).
+Closes [#3270](https://github.com/GSD-redux/get-shit-done-redux/issues/3270).
 
 ---
 
 ## What was in 1.41.x
 
-- **[v1.41.1](https://github.com/gsd-build/get-shit-done/releases/tag/v1.41.1)** — 14-fix hotfix: phase-plan-index DAG correctness, state-snapshot YAML frontmatter precedence, code-review SUMMARY parser hardening (`BL-` / `blocker:` accepted as Critical-tier), Codex install TOML floats + idempotent rollback, persistent SDK reachability probe, shared model-catalog source of truth (ADR-0003), and more.
-- **[v1.41.0](https://github.com/gsd-build/get-shit-done/releases/tag/v1.41.0)** — six namespace meta-skills, `/gsd-health --context` utilization guard, `--minimal` install flag, `/gsd-edit-phase`, post-merge build & test gate, manual canary release workflow, and 25+ correctness fixes. See [`RELEASE-v1.41.0.md`](RELEASE-v1.41.0.md).
+- **[v1.41.1](https://github.com/GSD-redux/get-shit-done-redux/releases/tag/v1.41.1)** — 14-fix hotfix: phase-plan-index DAG correctness, state-snapshot YAML frontmatter precedence, code-review SUMMARY parser hardening (`BL-` / `blocker:` accepted as Critical-tier), Codex install TOML floats + idempotent rollback, persistent SDK reachability probe, shared model-catalog source of truth (ADR-0003), and more.
+- **[v1.41.0](https://github.com/GSD-redux/get-shit-done-redux/releases/tag/v1.41.0)** — six namespace meta-skills, `/gsd-health --context` utilization guard, `--minimal` install flag, `/gsd-edit-phase`, post-merge build & test gate, manual canary release workflow, and 25+ correctness fixes. See [`RELEASE-v1.41.0.md`](RELEASE-v1.41.0.md).
 
 ---
 
@@ -82,13 +82,13 @@ Closes [#3270](https://github.com/gsd-build/get-shit-done/issues/3270).
 
 ```bash
 # npm (global, RC channel)
-npm install -g get-shit-done-cc@next
+npm install -g get-shit-done-redux@next
 
 # npx (one-shot)
-npx get-shit-done-cc@next
+npx get-shit-done-redux@next
 
 # Pin to this exact RC
-npm install -g get-shit-done-cc@1.42.0-rc1
+npm install -g get-shit-done-redux@1.42.0-rc1
 ```
 
 The installer is idempotent — re-running on an existing install updates in-place, preserving your `.planning/` directory and local patches.
@@ -96,5 +96,5 @@ The installer is idempotent — re-running on an existing install updates in-pla
 To roll back to the latest stable, install with `@latest`:
 
 ```bash
-npx get-shit-done-cc@latest
+npx get-shit-done-redux@latest
 ```
