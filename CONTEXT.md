@@ -100,6 +100,9 @@ Module owning SDK-to-`get-shit-done-redux` compatibility policy: legacy asset di
 ### Runtime-Global Skills Policy Module
 Module owning runtime-aware global skills directory policy for SDK query surfaces. Resolves runtime-global skills bases/skill paths from runtime + env precedence, renders display paths for warnings/manifests, and reports unsupported runtimes with no skills directory.
 
+### Runtime Name Policy Module
+Shared CJS/SDK Module owning runtime identity normalization at runtime-selection seams. Canonicalizes alias signals from env/config (`GSD_RUNTIME`, `.planning/config.json:runtime`) to supported runtime IDs so output emitters and query runtime gates stay consistent across naming variants (for example `codex-app`/`codex-cli` -> `codex`). Sources: `get-shit-done/bin/lib/runtime-name-policy.cjs`, `sdk/src/runtime-name-policy.ts`, alias manifest `sdk/shared/runtime-aliases.manifest.json`.
+
 ### Installer Migration Authoring Guard Module
 Module owning validation for Installer Migration Module records and planned actions. It enforces migration metadata, explicit install scopes, ownership evidence for destructive/config actions, and runtime contract citations for runtime config rewrites before a migration can enter planning or apply.
 
@@ -154,6 +157,12 @@ Five-axis story decomposition discipline (**S**pike, **P**aths, **I**nterfaces, 
 `RULESET.TESTS.boundary-coverage.fixtures=for any code with budget/limit/quota/threshold parameter, test suite MUST include: (a) input where SUT estimate == limit exactly, (b) input where estimate == limit - 1, (c) input where estimate == limit + 1, (d) input where any internal reserve/safety constant pushes baseline within reserve-distance of limit (catches early-pressure firing)`
 `RULESET.TESTS.boundary-coverage.anti-pattern=test suites that pair budget:1_000_000 (trivially fits) with budget:1 (trivially overflows) and skip the boundary region; failure mode that shipped PR #3708 UNNEEDED_TRIM + FALSE_HARDFAIL regressions (commit 2df566ed, fixed bde1ae8f)`
 `LEARNING.prompt-budget.boundary-gap=PR #3708 commit 2df566ed reserved NOTE_RESERVE_TOKENS in pressure-threshold AND in minSet pre-check; both buggy paths only fire when baseTokens ∈ (effectiveBudget - NOTE_RESERVE_TOKENS, effectiveBudget]; original test suite used budgets far from that band so neither path was exercised; fix bde1ae8f confines NOTE_RESERVE accounting to post-trim assembly path only; future budget/limit code MUST add boundary fixtures per RULESET.TESTS.boundary-coverage.fixtures`
+`RULESET.TESTS.async-side-effects=no synchronous assertion on fire-and-forget subprocess side-effects; assert launch sentinel synchronously and verify persisted side-effects with bounded polling or explicit synchronization`
+`RULESET.TESTS.lock-contention-avoidance=tests must not invoke a second lock-taking writer against the same state file while a detached writer may still hold the lock unless lock contention is the behavior under test`
+`RULESET.TESTS.windows-transient-retry=for windows-prone filesystem/process transients (EPERM|EBUSY|EACCES|ENOTEMPTY|resource busy) use bounded retry wrappers in test helpers rather than one-shot assertions`
+`RULESET.TESTS.prepush-targeted=before push, run targeted node --test for every touched flaky-prone suite (context monitor, config idempotence, lock-sensitive state paths) to catch platform regressions early`
+`LEARNING.CI.PR143.2026-05-23.failure-modes=PR #143 failed from test reliability not product regression: tests/bug-1974-context-exhaustion-record.test.cjs raced two record-session writers on STATE.md lock (status=null/ETIMEDOUT on windows), and tests/config.test.cjs idempotence case saw transient second-call failure on windows`
+`LEARNING.CI.PR143.2026-05-23.fix-pattern=split hook-side-effect assertion into sentinel-now + bounded-poll persistence check, isolate direct record-session verification into a separate non-racing test, and harden config-ensure-section idempotence with transient retry wrapper`
 
 `RULESET.WORKFLOW_MARKDOWN.FENCES=preserve opening language fence when editing shell snippets in workflow markdown; malformed fence creates fresh CR threads (MD040)`
 `RULESET.WORKFLOW_SIZE_BUDGET=workflow-size-budget can fail otherwise-valid review fixes; XL workflows <=1800 lines or trim prose before final checks`
