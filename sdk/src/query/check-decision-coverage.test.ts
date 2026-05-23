@@ -526,13 +526,15 @@ describe('decision IDs inside gsd-planner XML <action> bodies (bug #5)', () => {
     // Decision IDs are cited inside <action> directives. Before the fix this was invisible
     // to the gate because the body-section extractor only recognized markdown headings,
     // not XML element names, so the <tasks> block was never treated as a designated section.
+    //
+    // The <done> tag is intentionally omitted here so the test ONLY passes via the
+    // <action> extraction path. If that path were reverted this test must fail.
     const planBody = `<tasks>
 <task type="auto">
 <name>Implement decision enforcement</name>
 <files>src/foo.ts</files>
 <action>Implement D-42 per the architecture: use strict type narrowing everywhere.</action>
 <verify>tsc --noEmit</verify>
-<done>D-42 is enforced</done>
 </task>
 </tasks>
 `;
@@ -552,6 +554,32 @@ describe('decision IDs inside gsd-planner XML <action> bodies (bug #5)', () => {
     expect(result.data.passed).toBe(true);
     expect(result.data.covered).toBe(1);
     expect(result.data.uncovered).toEqual([]);
+  });
+
+  it('counts a D-NN citation inside an attribute-bearing <action id="…"> tag', async () => {
+    // Verify that <action id="D-42"> and <action type="fix"> open-tags are matched
+    // by the updated regex: /<action(?:\s[^>]*)?>([\s\S]*?)<\/action>/gi
+    const planBody = `<tasks>
+<task type="auto">
+<action id="D-42-task">Apply D-42: use strict type narrowing throughout.</action>
+</task>
+</tasks>
+`;
+    await setupPhase(
+      `<decisions>
+### Architecture
+- **D-42:** Use strict type narrowing throughout the implementation
+</decisions>`,
+      {
+        '17-01-PLAN.md': planFile(
+          `  truths: []\n  artifacts: []\n  key_links: []`,
+          planBody,
+        ),
+      },
+    );
+    const result = await checkDecisionCoveragePlan([phaseDir, contextPath], tmp);
+    expect(result.data.passed).toBe(true);
+    expect(result.data.covered).toBe(1);
   });
 
   it('counts multiple D-NN citations across several <action> tags in the same plan', async () => {
@@ -583,5 +611,90 @@ describe('decision IDs inside gsd-planner XML <action> bodies (bug #5)', () => {
     expect(result.data.passed).toBe(true);
     expect(result.data.covered).toBe(2);
     expect(result.data.uncovered).toEqual([]);
+  });
+
+  it('does NOT count a D-NN citation inside a sibling <objective> tag (sibling isolation)', async () => {
+    // Only <action> bodies are extracted as designated text. Other sibling tags
+    // like <objective>, <name>, <verify>, <done> are NOT extracted. A decision
+    // ID appearing only inside <objective> must remain uncovered.
+    const planBody = `<tasks>
+<task type="auto">
+<objective>D-99 is mentioned here but this tag is not designated.</objective>
+<action>No decision ID appears in this action body.</action>
+</task>
+</tasks>
+`;
+    await setupPhase(
+      `<decisions>
+### Architecture
+- **D-99:** A trackable decision that appears only in a non-action sibling tag
+</decisions>`,
+      {
+        '17-01-PLAN.md': planFile(
+          `  truths: []\n  artifacts: []\n  key_links: []`,
+          planBody,
+        ),
+      },
+    );
+    const result = await checkDecisionCoveragePlan([phaseDir, contextPath], tmp);
+    expect(result.data.passed).toBe(false);
+    expect(result.data.uncovered.map((u: { id: string }) => u.id)).toContain('D-99');
+  });
+
+  it('does NOT count a D-NN citation inside a fenced code block containing <action> tags', async () => {
+    // stripCommentsAndFences runs before <action> extraction, so any <action>
+    // tokens inside a ``` fence are blanked out before the regex runs.
+    const planBody = `## Design notes
+
+\`\`\`xml
+<action>D-50 is mentioned here but inside a fence</action>
+\`\`\`
+
+No real action tags outside the fence.
+`;
+    await setupPhase(
+      `<decisions>
+### Architecture
+- **D-50:** A trackable decision cited only inside a fenced code block
+</decisions>`,
+      {
+        '17-01-PLAN.md': planFile(
+          `  truths: []\n  artifacts: []\n  key_links: []`,
+          planBody,
+        ),
+      },
+    );
+    const result = await checkDecisionCoveragePlan([phaseDir, contextPath], tmp);
+    expect(result.data.passed).toBe(false);
+    expect(result.data.uncovered.map((u: { id: string }) => u.id)).toContain('D-50');
+  });
+
+  it('preserves coverage for outer-body IDs when nested <action> tags truncate inner content', async () => {
+    // The non-greedy regex closes on the first </action>, so nested tags are
+    // truncated. However, decision IDs in the body OUTSIDE the nested close tag
+    // are still recognized by the heading/body scan (tasks heading). This test
+    // asserts total coverage is preserved even when nesting causes truncation.
+    const planBody = `## tasks
+D-30 is cited in the outer tasks body and must be recognized via heading scan.
+
+<action>Outer start <action>inner content D-31</action> outer remainder D-30 again.</action>
+`;
+    await setupPhase(
+      `<decisions>
+### Architecture
+- **D-30:** A decision cited in the outer tasks body outside nested action tags
+</decisions>`,
+      {
+        '17-01-PLAN.md': planFile(
+          `  truths: []\n  artifacts: []\n  key_links: []`,
+          planBody,
+        ),
+      },
+    );
+    const result = await checkDecisionCoveragePlan([phaseDir, contextPath], tmp);
+    // D-30 is found via the heading-based body scan (## tasks section) regardless
+    // of whether the nested-action regex truncation drops it from actionParts.
+    expect(result.data.passed).toBe(true);
+    expect(result.data.covered).toBe(1);
   });
 });

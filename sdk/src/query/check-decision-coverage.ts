@@ -219,12 +219,28 @@ function extractPlanSections(planContent: string): PlanSections {
   // The heading-based scan above misses them because <tasks> is an XML tag,
   // not a markdown heading. Extract all <action> bodies as designated text
   // so that D-NN citations inside action directives count as covered (bug #5).
+  //
+  // NOTE: <action> extraction runs on `body` AFTER stripCommentsAndFences has
+  // already been applied to the full planContent (via `cleaned`), so fenced
+  // <action> tokens inside ``` blocks are already blanked out and won't match.
+  //
+  // NOTE: The regex uses non-greedy *? and therefore closes on the first inner
+  // </action> when tags are nested. IDs in the outer body (after the inner close
+  // tag) are still recognized by the heading/body scan above, so total coverage
+  // is preserved even when the regex truncates nested content.
+  //
+  // Attribute-bearing open tags (e.g. <action id="D-01"> or <action type="fix">)
+  // are also matched via the (?:\s[^>]*)? group.
   const actionParts: string[] = [];
-  for (const m of body.matchAll(/<action>([\s\S]*?)<\/action>/gi)) {
+  for (const m of body.matchAll(/<action(?:\s[^>]*)?>([\s\S]*?)<\/action>/gi)) {
     if (m[1]) actionParts.push(m[1]);
   }
 
-  return { designated: [...fmParts, bodyParts.join('\n'), actionParts.join('\n')].join('\n\n') };
+  const parts: string[] = [...fmParts, bodyParts.join('\n')];
+  // Only add the action section when there is real content so empty extracts
+  // don't inject a stray '\n\n' into the designated haystack.
+  if (actionParts.length > 0) parts.push(actionParts.join('\n'));
+  return { designated: parts.join('\n\n') };
 }
 
 async function loadPlanSections(phaseDir: string): Promise<PlanSections[]> {
