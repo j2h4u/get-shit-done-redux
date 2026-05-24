@@ -1,21 +1,9 @@
 name: Discord changelog
 
 on:
-  push:
-    branches:
-      - main
-      - master
-  pull_request:
-    types:
-      - opened
-      - reopened
-      - synchronize
-      - closed
   release:
     types:
       - published
-  create:
-  delete:
   workflow_dispatch:
     inputs:
       release_tag:
@@ -30,7 +18,6 @@ permissions:
 jobs:
   discord-changelog:
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Post changelog to Discord
         uses: actions/github-script@v7
@@ -94,6 +81,16 @@ jobs:
             }
 
             function buildDiscordPayload(eventName, event) {
+              if (eventName === "release") {
+                return {
+                  username: "Repo Changelog",
+                  content: buildReleaseContent(event),
+                  allowed_mentions: {
+                    parse: [],
+                  },
+                };
+              }
+
               return {
                 username: "Repo Changelog",
                 content: buildContent(eventName, event),
@@ -107,6 +104,16 @@ jobs:
                   },
                 ],
               };
+            }
+
+            function buildReleaseContent(event) {
+              const release = event.release || {};
+              const tag = release.tag_name || release.name || "release";
+              const title = release.name || tag;
+              const notes = formatReleaseNotes(release.body || "") || "No release notes provided.";
+              const releaseLink = release.html_url ? `\n\nRelease: ${release.html_url}` : "";
+
+              return `**${title} Released**\n\n${notes}${releaseLink}`;
             }
 
             function buildContent(eventName, event) {
@@ -158,9 +165,6 @@ jobs:
                 description: formatReleaseNotes(release.body || "") || "No release notes provided.",
                 url: release.html_url || event.repository?.html_url,
                 color: 0x57f287,
-                image: {
-                  url: changelogBannerUrl(event),
-                },
                 fields: [
                   {
                     name: "Repository",
@@ -179,10 +183,6 @@ jobs:
                   },
                 ],
               };
-            }
-
-            function changelogBannerUrl(event) {
-              return `https://raw.githubusercontent.com/${getRepoName(event)}/main/.github/assets/changelog-banner.png`;
             }
 
             function buildPushEmbed(event) {
