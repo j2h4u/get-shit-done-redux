@@ -158,6 +158,9 @@ jobs:
                 description: formatReleaseNotes(release.body || "") || "No release notes provided.",
                 url: release.html_url || event.repository?.html_url,
                 color: 0x57f287,
+                image: {
+                  url: changelogBannerUrl(event),
+                },
                 fields: [
                   {
                     name: "Repository",
@@ -176,6 +179,10 @@ jobs:
                   },
                 ],
               };
+            }
+
+            function changelogBannerUrl(event) {
+              return `https://raw.githubusercontent.com/${getRepoName(event)}/main/.github/assets/changelog-banner.png`;
             }
 
             function buildPushEmbed(event) {
