@@ -12,7 +12,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { cleanup, createTempDir, runNpm } = require('./helpers.cjs');
+const { cleanup, createTempDir, runNpm, isolatedNpmEnv } = require('./helpers.cjs');
 const { SMOKE, runSmoke } = require('../scripts/release-tarball-smoke.cjs');
 
 const PKG_PATH = path.join(__dirname, '..', 'package.json');
@@ -32,9 +32,16 @@ describe('release-tarball-smoke', () => {
     installPrefix = createTempDir('gsd-smoke-prefix-');
     fixtureDir = createTempDir('gsd-smoke-fixture-');
 
+    // npm pack + npm install -g on a large tarball (1499 files, ~10 MB) can take
+    // 3–6 minutes on slow Docker hosts (cold disk, constrained CPU). The runNpm
+    // default timeout of 180 s is sufficient on fast machines but insufficient on
+    // cartographer-class hosts. 600 s (10 min) gives a safe ceiling without
+    // masking genuine hangs.
+    const SLOW_HOST_TIMEOUT = 600_000;
+
     const packOutput = runNpm(
       ['pack', '--pack-destination', packDir],
-      { cwd: path.join(__dirname, '..') },
+      { cwd: path.join(__dirname, '..'), timeout: SLOW_HOST_TIMEOUT },
     );
 
     // npm pack prints the filename as the last line of stdout.
@@ -48,7 +55,7 @@ describe('release-tarball-smoke', () => {
     }
 
     // Install once into installPrefix. All tests share this install.
-    runNpm(['install', '-g', '--prefix', installPrefix, tarballPath]);
+    runNpm(['install', '-g', '--prefix', installPrefix, tarballPath], { timeout: SLOW_HOST_TIMEOUT });
   });
 
   after(() => {
@@ -64,6 +71,7 @@ describe('release-tarball-smoke', () => {
       installPrefix,
       expectedVersion: pkg.version,
       fixtureDir,
+      npmEnv: isolatedNpmEnv(),
     });
 
     assert.equal(result.code, SMOKE.OK);
@@ -77,6 +85,7 @@ describe('release-tarball-smoke', () => {
       installPrefix,
       expectedVersion: '99.99.99',
       fixtureDir,
+      npmEnv: isolatedNpmEnv(),
     });
 
     assert.equal(result.code, SMOKE.VERSION_MISMATCH);
@@ -85,7 +94,7 @@ describe('release-tarball-smoke', () => {
   // ── Test C — happy lifecycle ───────────────────────────────────────────────
   // Verifies that the installed package has all expected command .md files and
   // that each command resolves a workflow .md file that also exists.
-  // Also verifies that `get-shit-done-cc --local --claude` (init) succeeds in
+  // Also verifies that `get-shit-done-redux --local --claude` (init) succeeds in
   // the fixtureDir and creates the expected .claude/ directories.
   test('C: happy lifecycle — command + workflow files resolve OK', () => {
     const result = runSmoke({
@@ -94,6 +103,7 @@ describe('release-tarball-smoke', () => {
       expectedVersion: pkg.version,
       fixtureDir,
       lifecycleCommands: ['init', 'discuss-phase', 'plan-phase'],
+      npmEnv: isolatedNpmEnv(),
     });
 
     assert.equal(result.code, SMOKE.OK);
@@ -132,6 +142,7 @@ describe('release-tarball-smoke', () => {
       expectedVersion: pkg.version,
       fixtureDir,
       lifecycleCommands: ['init', 'nonexistent-phase-xyz'],
+      npmEnv: isolatedNpmEnv(),
     });
 
     assert.equal(result.code, SMOKE.COMMAND_FILE_MISSING);
@@ -149,6 +160,7 @@ describe('release-tarball-smoke', () => {
       expectedVersion: pkg.version,
       fixtureDir,
       lifecycleCommands: [], // skip lifecycle checks; isolate SDK check
+      npmEnv: isolatedNpmEnv(),
     });
 
     // If the binary can't be called, code would be SDK_BINARY_NOT_CALLABLE
@@ -168,6 +180,7 @@ describe('release-tarball-smoke', () => {
       expectedVersion: pkg.version,
       fixtureDir,
       lifecycleCommands: [],
+      npmEnv: isolatedNpmEnv(),
     });
 
     // Structural: the scan ran and populated the counters

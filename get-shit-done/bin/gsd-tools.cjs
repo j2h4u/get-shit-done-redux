@@ -2,7 +2,7 @@
 
 /**
  * @deprecated The supported programmatic surface is `gsd-sdk query` (SDK query registry)
- * and the `@gsd-build/sdk` package. This Node CLI remains the compatibility implementation
+ * and the `@opengsd/gsd-sdk` package. This Node CLI remains the compatibility implementation
  * for shell scripts and older workflows; prefer calling the SDK from agents and automation.
  *
  * GSD Tools — CLI utility for GSD workflow operations
@@ -232,19 +232,26 @@ const { tryLoadSdk: _tryLoadSdkBridge, getExecuteForCjs } = require('./lib/cjs-s
  */
 function _dispatchNonFamily({ registryCommand, registryArgs, legacyCommand, legacyArgs, cwd, raw, error, output }) {
   if (!_tryLoadSdkBridge()) return false;
-  const result = getExecuteForCjs()({
-    registryCommand,
-    registryArgs,
-    legacyCommand,
-    legacyArgs,
-    // Always request typed JSON from the bridge; CJS `output(data, raw)` handles
-    // user-facing rendering. Passing `mode: 'raw'` would make the bridge
-    // pre-render result.data to a JSON string that the CJS output path then
-    // double-stringifies (returning a JSON string of a JSON string).
-    mode: 'json',
-    projectDir: cwd,
-    workstream: process.env.GSD_WORKSTREAM || undefined,
-  });
+  let result;
+  try {
+    result = getExecuteForCjs()({
+      registryCommand,
+      registryArgs,
+      legacyCommand,
+      legacyArgs,
+      // Always request typed JSON from the bridge; CJS `output(data, raw)` handles
+      // user-facing rendering. Passing `mode: 'raw'` would make the bridge
+      // pre-render result.data to a JSON string that the CJS output path then
+      // double-stringifies (returning a JSON string of a JSON string).
+      mode: 'json',
+      projectDir: cwd,
+      workstream: process.env.GSD_WORKSTREAM || undefined,
+    });
+  } catch {
+    // Bridge threw (e.g. synckit worker crash, Atomics failure on Windows).
+    // Return false so the caller falls through to the CJS handler.
+    return false;
+  }
   if (!result.ok) {
     const message = (result.errorDetails && result.errorDetails.message)
       || `${legacyCommand} (${registryCommand}) failed (${result.errorKind})`;

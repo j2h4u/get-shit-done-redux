@@ -30,7 +30,7 @@
  *     - Assert commands/gsd/<cmd>.md exists in the installed package
  *     - Parse the .md for a workflow @-import or inline reference
  *     - Assert the referenced workflow .md exists in the installed package
- *   If 'init' is in lifecycleCommands, runs `get-shit-done-cc --local --claude`
+ *   If 'init' is in lifecycleCommands, runs `get-shit-done-redux --local --claude`
  *   in fixtureDir to verify the installer is callable (INIT_FAILED on crash).
  *   Non-interactive: --local --claude flags skip all prompts.
  *
@@ -78,14 +78,14 @@ const SMOKE = Object.freeze({
 // ---------------------------------------------------------------------------
 
 /**
- * Locate the lib/node_modules/get-shit-done-cc package root inside an
- * npm --prefix install directory.
+ * Locate the lib/node_modules/@opengsd/get-shit-done-redux package root inside
+ * an npm --prefix install directory.
  */
 function pkgRoot(installPrefix) {
-  // POSIX: <prefix>/lib/node_modules/get-shit-done-cc
-  // Windows: <prefix>/node_modules/get-shit-done-cc
-  const posix = path.join(installPrefix, 'lib', 'node_modules', 'get-shit-done-cc');
-  const win = path.join(installPrefix, 'node_modules', 'get-shit-done-cc');
+  // POSIX: <prefix>/lib/node_modules/@opengsd/get-shit-done-redux
+  // Windows: <prefix>/node_modules/@opengsd/get-shit-done-redux
+  const posix = path.join(installPrefix, 'lib', 'node_modules', '@opengsd', 'get-shit-done-redux');
+  const win = path.join(installPrefix, 'node_modules', '@opengsd', 'get-shit-done-redux');
   return fs.existsSync(posix) ? posix : win;
 }
 
@@ -108,7 +108,7 @@ function findGsdSdkBin(installPrefix) {
 }
 
 /**
- * Locate the get-shit-done-cc installer binary (the symlink in <prefix>/bin/).
+ * Locate the get-shit-done-redux installer binary (the symlink in <prefix>/bin/).
  */
 function findInstallerBin(installPrefix) {
   const binDir = process.platform === 'win32'
@@ -116,8 +116,8 @@ function findInstallerBin(installPrefix) {
     : path.join(installPrefix, 'bin');
 
   const candidates = process.platform === 'win32'
-    ? [path.join(binDir, 'get-shit-done-cc.cmd'), path.join(binDir, 'get-shit-done-cc')]
-    : [path.join(binDir, 'get-shit-done-cc')];
+    ? [path.join(binDir, 'get-shit-done-redux.cmd'), path.join(binDir, 'get-shit-done-redux')]
+    : [path.join(binDir, 'get-shit-done-redux')];
 
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
@@ -282,6 +282,10 @@ function scanWorkflowMissingSdkFallback(filePath) {
  * @param {string}   [opts.fixtureDir]       - Temp dir to run `init` into (must NOT be HOME)
  * @param {string[]} [opts.lifecycleCommands] - Commands to file-check (default: see below)
  * @param {boolean}  [opts.dryRun=false]     - If true, skip actual npm install; validate input only
+ * @param {object}   [opts.npmEnv]           - Optional env dict for the internal npm install
+ *   spawnSync call. Pass an isolated HOME env (e.g. from isolatedNpmEnv() in tests/helpers.cjs)
+ *   to prevent npm from reading/writing the caller's $HOME — required on Docker hosts where HOME
+ *   may be unwritable. Defaults to process.env. (#131)
  * @returns {{ code: string, details: object }}
  */
 function runSmoke({
@@ -291,6 +295,7 @@ function runSmoke({
   fixtureDir,
   lifecycleCommands = ['init', 'discuss-phase', 'plan-phase', 'execute-phase'],
   dryRun = false,
+  npmEnv = undefined,
 }) {
   const details = {
     tarball: tarballPath,
@@ -304,10 +309,14 @@ function runSmoke({
 
   // --- Install the tarball into the temp prefix ----------------------------
   const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  // Use the caller-supplied npmEnv if provided (allows HOME isolation on Docker
+  // hosts where HOME may be unwritable — same pattern as runNpm() in helpers.cjs).
+  // Falls back to process.env to preserve existing CLI / programmatic behaviour. (#131)
+  const effectiveNpmEnv = npmEnv !== undefined ? npmEnv : process.env;
   const installResult = spawnSync(
     npmCmd,
     ['install', '-g', '--prefix', installPrefix, tarballPath],
-    { encoding: 'utf-8', shell: process.platform === 'win32', timeout: CHILD_TIMEOUT_MS },
+    { encoding: 'utf-8', shell: process.platform === 'win32', timeout: CHILD_TIMEOUT_MS, env: effectiveNpmEnv },
   );
 
   if (installResult.status !== 0) {
@@ -335,10 +344,12 @@ function runSmoke({
   }
 
   // --- Invoke `gsd-sdk --version` ------------------------------------------
+  // Use effectiveNpmEnv so the installed binary sees an isolated HOME on Docker
+  // hosts where HOME may be unwritable (same isolation as the npm install). (#131)
   const versionResult = spawnSync(
     process.execPath,
     [actualBin, '--version'],
-    { encoding: 'utf-8', timeout: CHILD_TIMEOUT_MS },
+    { encoding: 'utf-8', timeout: CHILD_TIMEOUT_MS, env: effectiveNpmEnv },
   );
 
   if (versionResult.status !== 0) {
@@ -386,7 +397,7 @@ function runSmoke({
         code: SMOKE.INIT_FAILED,
         details: {
           ...details,
-          reason: 'get-shit-done-cc binary not found in installPrefix',
+          reason: 'get-shit-done-redux binary not found in installPrefix',
           installPrefix,
         },
       };
@@ -497,11 +508,13 @@ function runSmoke({
   // ─────────────────────────────────────────────────────────────────────────
 
   // --- Verify `gsd-sdk` query is callable and returns parseable JSON -------
+  // Use effectiveNpmEnv so the installed binary sees an isolated HOME on Docker
+  // hosts where HOME may be unwritable (same isolation as the npm install). (#131)
   const sdkQueryDir = fixtureDir || os.tmpdir();
   const sdkQueryResult = spawnSync(
     process.execPath,
     [actualBin, 'query', 'state.json', '--project-dir', sdkQueryDir],
-    { encoding: 'utf-8', timeout: CHILD_TIMEOUT_MS },
+    { encoding: 'utf-8', timeout: CHILD_TIMEOUT_MS, env: effectiveNpmEnv },
   );
 
   if (sdkQueryResult.status !== 0) {

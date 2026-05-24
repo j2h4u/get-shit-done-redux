@@ -145,8 +145,8 @@ function serializeGithubReleaseNotes({
   ir,
   fromRef,
   toRef,
-  repoSlug = 'gsd-build/get-shit-done',
-  installCommand = 'npx get-shit-done-cc@latest',
+  repoSlug = 'open-gsd/get-shit-done-redux',
+  installCommand = 'npx @opengsd/get-shit-done-redux@latest',
 }) {
   if (installCommand.includes('`')) {
     throw new Error('installCommand cannot contain backtick characters');

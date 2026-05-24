@@ -120,7 +120,7 @@ User-facing entry points. Each file contains YAML frontmatter (name, description
 
 **Total commands:** see [`docs/INVENTORY.md`](INVENTORY.md#commands) for the authoritative count and full roster.
 
-#### Two-stage hierarchical routing (v1.40, [#2792](https://github.com/gsd-build/get-shit-done/issues/2792))
+#### Two-stage hierarchical routing (v1.40, [#2792](https://github.com/open-gsd/get-shit-done-redux/issues/2792))
 
 To keep the eager skill-listing token cost low, v1.40 introduces six namespace **meta-skills** (`gsd-workflow`, `gsd-project`, `gsd-quality`, `gsd-context`, `gsd-manage`, `gsd-ideate` — sourced from `commands/gsd/ns-*.md`, but the invocable `name:` is the bare form shown here) layered above the concrete sub-skills. The model sees 6 namespace routers (~120 tokens) instead of a flat 86-skill listing (~2,150 tokens), selects a namespace, then routes to the concrete sub-skill via a routing table embedded in the namespace router's body. Namespace skills are **additive** — every concrete command is still directly invocable.
 
@@ -276,6 +276,10 @@ Programmatic SDK callers (`GSDTools`) route through one seam that owns query dis
 - Structured dispatch observability (`onDispatchEvent`) with mode, reason, duration, and outcome
 
 This keeps callers thin adapters and centralizes transport decisions for SDK publishability.
+
+### Command Routing Hub (`get-shit-done/bin/lib/command-routing-hub.cjs`)
+
+CJS command family routers migrate to dispatch through `CommandRoutingHub` incrementally. `phase-command-router.cjs` is the first migration (issue #3788); remaining routers (`phases-command-router.cjs`, `roadmap-command-router.cjs`, etc.) continue using `routeCjsCommandFamily` until migrated in follow-up issues. The hub owns three cross-cutting concerns that each router previously duplicated: (1) mode selection (`sdk` when `tryLoadSdk()` succeeds and no `GSD_WORKSTREAM` is active, `cjs` otherwise), set once at construction; (2) a no-throw pure-result contract (`hub.dispatch()` catches all exceptions and returns `{ ok: false, errorKind, message, details }` instead of propagating); and (3) a closed six-value `errorKind` enum exported as the frozen `ERROR_KINDS` object. Router adapters remain thin CLI translators — they build the hub, call `dispatch`, then map the Result to `output()`/`error()` calls. No transparent SDK→CJS fallback: an SDK-mode hub that encounters a load or dispatch failure returns `SdkLoadFailed` or `SdkDispatchFailed` without retrying via CJS. See `docs/adr/0012-command-routing-hub.md`.
 
 ### CLI Tools (`get-shit-done/bin/`)
 

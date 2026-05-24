@@ -19,6 +19,22 @@ const {
 const EXIT_ON_STATE_MD_MISSING = new Set(['state.get']);
 const STATE_MD_MISSING_MESSAGE = 'STATE.md not found';
 
+// Subcommands whose CJS contract is always exit-0 — they emit
+// { error: '...' } JSON via output() for every failure case (missing STATE.md,
+// missing required args, validation failures).  When the SDK returns
+// result.ok === false for these subcommands we must NOT call error() (exit 1);
+// instead we surface the SDK error message as exit-0 JSON so callers can
+// JSON.parse the response and branch on the error field.
+const OUTPUT_ON_SDK_ERROR = new Set([
+  'state.record-metric',
+  'state.advance-plan',
+  'state.record-session',
+  'state.add-decision',
+  'state.add-blocker',
+  'state.resolve-blocker',
+  'state.update-progress',
+]);
+
 // The bridge loader verifies both `executeForCjs` and `formatStateLoadRawStdout`
 // are present before returning success, so this router can call `tryLoadSdk()`
 // directly without an additional capability check.
@@ -47,21 +63,41 @@ function dispatchViaSdk(registryCommand, registryArgs, legacyArgs, cwd, raw, err
   // honor the user's --raw flag and let the bridge do default rendering.
   const bridgeMode = rawFormatter ? 'json' : (raw ? 'raw' : 'json');
 
-  const result = getExecuteForCjs()({
-    registryCommand,
-    registryArgs,
-    legacyCommand: 'state',
-    legacyArgs,
-    mode: bridgeMode,
-    projectDir: cwd,
-    // Phase 6 fix: workstream is now threaded through to the native handler.
-    // GSDTransport no longer forces subprocess for workstream-scoped requests —
-    // the worker's dispatchNative closure correctly passes workstream to
-    // registry.dispatch() (Phase 5.1 fix), enabling native workstream dispatch.
-    workstream: process.env.GSD_WORKSTREAM || undefined,
-  });
+  let result;
+  try {
+    result = getExecuteForCjs()({
+      registryCommand,
+      registryArgs,
+      legacyCommand: 'state',
+      legacyArgs,
+      mode: bridgeMode,
+      projectDir: cwd,
+      // Phase 6 fix: workstream is now threaded through to the native handler.
+      // GSDTransport no longer forces subprocess for workstream-scoped requests —
+      // the worker's dispatchNative closure correctly passes workstream to
+      // registry.dispatch() (Phase 5.1 fix), enabling native workstream dispatch.
+      workstream: process.env.GSD_WORKSTREAM || undefined,
+    });
+  } catch {
+    // Bridge threw (e.g. synckit worker crash, Atomics failure on Windows).
+    // Return false so the caller falls through to the CJS handler.
+    return false;
+  }
 
   if (!result.ok) {
+    // Mutation subcommands whose CJS contract is always exit-0: surface the SDK
+    // error as JSON output (exit 0) rather than calling error() (exit 1).  This
+    // preserves the CJS contract for callers that JSON.parse stdout and branch on
+    // the error field — particularly important on Windows/Node 24 where the SDK
+    // bridge returns result.ok===false for validation failures (e.g. missing
+    // required args) instead of propagating them as result.data.error objects.
+    if (OUTPUT_ON_SDK_ERROR.has(registryCommand)) {
+      const msg = result.errorDetails && result.errorDetails.message
+        ? result.errorDetails.message
+        : `state ${registryCommand} failed (${result.errorKind})`;
+      output({ error: msg });
+      return true;
+    }
     error(result.errorDetails && result.errorDetails.message
       ? result.errorDetails.message
       : `state ${registryCommand} failed (${result.errorKind})`);

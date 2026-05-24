@@ -1,22 +1,16 @@
 # Release SDK Bundle
 #
-# Stopgap workflow_dispatch publish path: builds get-shit-done-cc with the
+# workflow_dispatch publish path: builds get-shit-done-redux with the
 # compiled SDK and the SDK .tgz bundled inside the CC tarball, then
 # publishes the CC package to ONE chosen dist-tag (dev | next | latest)
 # per run.
 #
-# Why this exists: @gsd-build/sdk publishes from canary.yml and release.yml
-# fail because the @gsd-build npm token is currently unavailable. CC users
-# do not consume @gsd-build/sdk directly — bin/gsd-sdk.js resolves
+# CC users do not consume @opengsd/gsd-sdk directly — bin/gsd-sdk.js resolves
 # sdk/dist/cli.js from inside the installed CC package, so the bundled
 # copy is sufficient for full functionality. This workflow ships CC alone
-# (no separate @gsd-build/sdk publish attempt) and additionally bakes a
+# (no separate @opengsd/gsd-sdk publish attempt) and additionally bakes a
 # bundled gsd-sdk-<version>.tgz at sdk-bundle/gsd-sdk.tgz inside the CC
 # tarball as a recoverable npm-installable artifact.
-#
-# Existing canary.yml and release.yml are intentionally untouched. They
-# remain the canonical two-package publish path; restore them to primary
-# use once @gsd-build/sdk ownership is recovered.
 #
 # Tracking issues: #2925 (initial workflow), #2929 (CI-gate parity with release.yml)
 
@@ -519,9 +513,9 @@ jobs:
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          EXISTING=$(npm view get-shit-done-cc@"$VERSION" version 2>/dev/null || true)
+          EXISTING=$(npm view @opengsd/get-shit-done-redux@"$VERSION" version 2>/dev/null || true)
           if [ -n "$EXISTING" ]; then
-            echo "::warning::get-shit-done-cc@${VERSION} is already on the registry — entering reconciliation mode (skip publish, continue with tag/release/PR/dist-tag)."
+            echo "::warning::@opengsd/get-shit-done-redux@${VERSION} is already on the registry — entering reconciliation mode (skip publish, continue with tag/release/PR/dist-tag)."
             echo "skip_publish=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip_publish=false" >> "$GITHUB_OUTPUT"
@@ -579,8 +573,8 @@ jobs:
           set -e
           cd sdk
           npm pack
-          # npm pack emits gsd-build-sdk-<version>.tgz in the cwd
-          TARBALL="gsd-build-sdk-${VERSION}.tgz"
+          # npm pack emits opengsd-gsd-sdk-<version>.tgz in the cwd
+          TARBALL="opengsd-gsd-sdk-${VERSION}.tgz"
           if [ ! -f "$TARBALL" ]; then
             echo "::error::Expected $TARBALL but npm pack did not produce it. Listing sdk/:"
             ls -la
@@ -638,7 +632,7 @@ jobs:
         if: ${{ steps.prior_publish.outputs.skip_publish != 'true' }}
         env:
           TAG: ${{ steps.ver.outputs.tag }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GETSHITDONEREDUXNPMTOKEN }}
         run: npm publish --dry-run --tag "$TAG"
 
       - name: Tag and push
@@ -657,7 +651,7 @@ jobs:
         if: ${{ !inputs.dry_run && steps.prior_publish.outputs.skip_publish != 'true' }}
         env:
           TAG: ${{ steps.ver.outputs.tag }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GETSHITDONEREDUXNPMTOKEN }}
         run: npm publish --provenance --access public --tag "$TAG"
 
       # Keep `next` from going stale relative to `latest`. When publishing a
@@ -668,9 +662,9 @@ jobs:
         if: ${{ !inputs.dry_run && steps.ver.outputs.tag == 'latest' }}
         env:
           VERSION: ${{ steps.ver.outputs.version }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GETSHITDONEREDUXNPMTOKEN }}
         run: |
-          npm dist-tag add "get-shit-done-cc@${VERSION}" next
+          npm dist-tag add "@opengsd/get-shit-done-redux@${VERSION}" next
           echo "✅ next dist-tag re-pointed to v${VERSION} (matches latest)"
 
       - name: Create GitHub Release (idempotent)
@@ -728,7 +722,7 @@ jobs:
         run: |
           PUBLISHED="NOT_FOUND"
           for delay in 5 10 20 30 45; do
-            PUBLISHED=$(npm view get-shit-done-cc@"$VERSION" version 2>/dev/null || echo "NOT_FOUND")
+            PUBLISHED=$(npm view @opengsd/get-shit-done-redux@"$VERSION" version 2>/dev/null || echo "NOT_FOUND")
             if [ "$PUBLISHED" = "$VERSION" ]; then
               break
             fi
@@ -739,12 +733,12 @@ jobs:
             echo "::error::Version $VERSION did not appear on the registry within timeout"
             exit 1
           fi
-          TAG_VERSION=$(npm view get-shit-done-cc dist-tags."$TAG" 2>/dev/null || echo "NOT_FOUND")
+          TAG_VERSION=$(npm view @opengsd/get-shit-done-redux dist-tags."$TAG" 2>/dev/null || echo "NOT_FOUND")
           if [ "$TAG_VERSION" != "$VERSION" ]; then
             echo "::error::dist-tag '$TAG' resolves to '$TAG_VERSION', expected '$VERSION'"
             exit 1
           fi
-          echo "✅ get-shit-done-cc@${VERSION} live on dist-tag '${TAG}'"
+          echo "✅ @opengsd/get-shit-done-redux@${VERSION} live on dist-tag '${TAG}'"
 
       - name: Summary
         env:
@@ -768,7 +762,7 @@ jobs:
             if [ "$DRY_RUN" = "true" ]; then
               echo "**DRY RUN** — npm publish, git tag, push, and GitHub Release were skipped."
             else
-              echo "- Published \`get-shit-done-cc@${VERSION}\` to dist-tag \`${TAG}\`"
+              echo "- Published \`@opengsd/get-shit-done-redux@${VERSION}\` to dist-tag \`${TAG}\`"
               echo "- SDK bundled inside the CC tarball at:"
               echo "  - \`sdk/dist/cli.js\` (loose tree, consumed by \`bin/gsd-sdk.js\` shim)"
               echo "  - \`sdk-bundle/gsd-sdk.tgz\` (npm-installable artifact)"
@@ -785,6 +779,6 @@ jobs:
                 # that was never opened.
                 echo "- No merge-back PR (auto-picked commits are already on main)"
               fi
-              echo "- Install: \`npm install -g get-shit-done-cc@${TAG}\`"
+              echo "- Install: \`npm install -g @opengsd/get-shit-done-redux@${TAG}\`"
             fi
           } >> "$GITHUB_STEP_SUMMARY"

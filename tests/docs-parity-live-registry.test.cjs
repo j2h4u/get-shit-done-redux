@@ -105,9 +105,9 @@ const INTERNAL_COMPONENT_SLUGS = new Set([
   // a real command token.
   'init-',
 
-  // gsd-build — GitHub organization name: "github.com/gsd-build/get-shit-done".
+  // gsd-build — GitHub organization name: "github.com/open-gsd/get-shit-done-redux".
   // Every occurrence of "/gsd-build" in docs is the path component of a GitHub URL
-  // (e.g., "[#2792](https://github.com/gsd-build/get-shit-done/issues/2792)").
+  // (e.g., "[#2792](https://github.com/open-gsd/get-shit-done-redux/issues/2792)").
   // The regex captures "/gsd-build" from the URL path. Not a slash command.
   'build',
 
@@ -128,6 +128,12 @@ const INTERNAL_COMPONENT_SLUGS = new Set([
   // the URL path. Not a user-typable slash command in this product.
   'opencode',
 
+  // gsd-sdk — the @opengsd/gsd-sdk npm package and `gsd-sdk query` CLI binary.
+  // Docs reference it as a package name (e.g. `@opengsd/gsd-sdk`) and CLI tool
+  // (e.g. `gsd-sdk query init phase-op 12`). The regex captures "/gsd-sdk" from
+  // the npm scope path separator in `@opengsd/gsd-sdk`. Not a user-typable slash command.
+  'sdk',
+
   // Smoke-test directory path — locale docs reference "/tmp/gsd-smoke-$(date +%s)"
   // as a temporary directory path in bash code-block examples. The regex captures
   // "/gsd-smoke-" from the filesystem path. Not a slash command.
@@ -147,6 +153,13 @@ const INTERNAL_COMPONENT_SLUGS = new Set([
   // docs/discussions/grok-build-support-2026-05.md. The regex captures
   // "/gsd-sync-skills" from the path. Invoked via Skill(skill="gsd-sync-skills").
   'sync-skills',
+
+  // gsd-test-runner — GitHub repository name: "github.com/open-gsd/gsd-test-runner".
+  // docs/contributing/bootstrap.md references it as a hyperlink target:
+  //   [gsd-test-runner](https://github.com/open-gsd/gsd-test-runner)
+  // The regex captures "/gsd-test-runner" from the URL path component. This is
+  // an external tool repo, not a user-typable slash command in this product.
+  'test-runner',
 ]);
 
 /**

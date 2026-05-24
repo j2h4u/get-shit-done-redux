@@ -567,6 +567,207 @@ objective: Manual review needed
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'Phase not found', 'should report phase not found');
   });
+
+  // #3785 — case-insensitive depends_on resolution
+  test('#3785: depends_on reference with different case resolves to correct plan', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '20-case-insensitive');
+    fs.mkdirSync(phaseDir, { recursive: true });
+
+    // Plan A: filename uses uppercase suffix — plan ID becomes '20-01-Auth'
+    fs.writeFileSync(
+      path.join(phaseDir, '20-01-Auth-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\ndepends_on: []\n---\n<objective>Plan A.</objective>\n`,
+    );
+    // Plan B: depends_on uses lowercase — must still resolve to Plan A
+    fs.writeFileSync(
+      path.join(phaseDir, '20-02-PLAN.md'),
+      `---\nwave: 2\nautonomous: true\ndepends_on:\n  - 20-01-auth\n---\n<objective>Plan B.</objective>\n`,
+    );
+
+    const result = runGsdTools('phase-plan-index 20', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    const waves = output.waves;
+
+    const wave01 = Object.keys(waves).find(w => waves[w].some(id => id.startsWith('20-01')));
+    const wave02 = Object.keys(waves).find(w => waves[w].some(id => id.startsWith('20-02')));
+    assert.ok(wave01 !== undefined, 'plan 20-01-Auth should appear in waves');
+    assert.ok(wave02 !== undefined, 'plan 20-02 should appear in waves');
+    assert.ok(
+      Number(wave01) < Number(wave02),
+      `20-02 must be in a later wave than 20-01 (got wave01=${wave01}, wave02=${wave02}) — DAG edge dropped (case mismatch)`,
+    );
+    // Lock canonical casing: plan ID must be preserved as-is from the filename, not lowercased.
+    const planA = output.plans.find(p => p.id.startsWith('20-01'));
+    assert.strictEqual(planA.id, '20-01-Auth', 'canonical casing must be preserved in plan ID');
+    // depends_on output must use canonical plan ID, not the user-typed casing.
+    const planB = output.plans.find(p => p.id === '20-02');
+    assert.deepStrictEqual(planB.depends_on, ['20-01-Auth'], 'depends_on output must resolve to canonical ID casing');
+    // No unresolved-dep warning
+    const warnings = output.warnings ?? [];
+    assert.ok(
+      !warnings.some(w => /unresolved/i.test(w)),
+      `Unexpected unresolved-dep warning: ${JSON.stringify(warnings)}`,
+    );
+  });
+
+  // #3785 adversarial: two plan IDs that are identical when case-folded must
+  // fail fast with a clear error instead of silently routing edges to the wrong plan.
+  // This test can only run on Linux where the filesystem is case-sensitive.
+  // On macOS/Windows (case-insensitive FS), writing both files silently collapses
+  // them to one file, so the collision scenario cannot be triggered via disk.
+  test('#3785 adversarial: two plan IDs differing only by case produce a collision error', {
+    skip: process.platform !== 'linux' ? 'case-insensitive filesystem — collision test requires Linux' : false,
+  }, () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '21-collision');
+    fs.mkdirSync(phaseDir, { recursive: true });
+
+    // '21-01-auth-PLAN.md' → id '21-01-auth'
+    // '21-01-Auth-PLAN.md' → id '21-01-Auth'
+    // Both lowercase to '21-01-auth' — collision.
+    fs.writeFileSync(
+      path.join(phaseDir, '21-01-auth-PLAN.md'),
+      `---\nautonomous: true\ndepends_on: []\n---\n<objective>lowercase.</objective>\n`,
+    );
+    fs.writeFileSync(
+      path.join(phaseDir, '21-01-Auth-PLAN.md'),
+      `---\nautonomous: true\ndepends_on: []\n---\n<objective>uppercase.</objective>\n`,
+    );
+
+    const result = runGsdTools('phase-plan-index 21', tmpDir);
+    // The command must exit with an error (non-success) naming the collision.
+    assert.ok(!result.success, 'phase-plan-index must fail when two plan IDs collide under case-folding');
+    assert.ok(
+      /collision/i.test(result.error ?? result.output ?? ''),
+      `Error output must mention 'collision', got: ${result.error ?? result.output}`,
+    );
+  });
+
+  // #3785 — all-uppercase depends_on value resolves to an all-lowercase plan ID
+  test('#3785: all-uppercase depends_on ref resolves to lowercase plan ID', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '22-uppercase-dep');
+    fs.mkdirSync(phaseDir, { recursive: true });
+
+    // Plan A: all-lowercase plan ID
+    fs.writeFileSync(
+      path.join(phaseDir, '22-01-setup-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\ndepends_on: []\n---\n<objective>Plan A.</objective>\n`,
+    );
+    // Plan B: depends_on uses ALL-UPPERCASE — must still route the DAG edge to Plan A
+    fs.writeFileSync(
+      path.join(phaseDir, '22-02-PLAN.md'),
+      `---\nwave: 2\nautonomous: true\ndepends_on:\n  - 22-01-SETUP\n---\n<objective>Plan B.</objective>\n`,
+    );
+
+    const result = runGsdTools('phase-plan-index 22', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    const waves = output.waves;
+
+    const wave01 = Object.keys(waves).find(w => waves[w].some(id => id.startsWith('22-01')));
+    const wave02 = Object.keys(waves).find(w => waves[w].some(id => id.startsWith('22-02')));
+    assert.ok(wave01 !== undefined, 'plan 22-01-setup should appear in waves');
+    assert.ok(wave02 !== undefined, 'plan 22-02 should appear in waves');
+    assert.ok(
+      Number(wave01) < Number(wave02),
+      `22-02 must be in a later wave than 22-01 — all-uppercase dep should route correctly (got wave01=${wave01}, wave02=${wave02})`,
+    );
+    // depends_on output must use canonical plan ID (lowercase as-on-disk), not the uppercase ref
+    const planB = output.plans.find(p => p.id === '22-02');
+    assert.deepStrictEqual(planB.depends_on, ['22-01-setup'], 'depends_on output must resolve to canonical lowercase ID');
+  });
+
+  // #3785 — external (cross-phase) depends_on reference is kept as-is in output
+  // The Pass 3 mapping must return the original dep string when planMap has no entry for it.
+  test('#3785: external cross-phase depends_on ref is preserved as-is in output', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '23-external-dep');
+    fs.mkdirSync(phaseDir, { recursive: true });
+
+    // Plan A: references a plan in a different phase (01-some-other-phase) — planMap won't have it
+    fs.writeFileSync(
+      path.join(phaseDir, '23-01-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\ndepends_on:\n  - 01-01-prereq\n---\n<objective>Plan A.</objective>\n`,
+    );
+
+    const result = runGsdTools('phase-plan-index 23', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    const planA = output.plans.find(p => p.id.startsWith('23-01'));
+    assert.ok(planA !== undefined, 'plan 23-01 should appear in output');
+    // External dep must be preserved verbatim — not dropped, not resolved
+    assert.deepStrictEqual(planA.depends_on, ['01-01-prereq'], 'external cross-phase dep must be kept as-is in output');
+  });
+
+  // #3785 — mixed-case canonical prefix in depends_on resolves via canonicalToId lookup
+  // e.g. depends_on: '22-01-SETUP' where extractCanonicalPlanId gives '22-01' keyed lowercase
+  test('#3785: mixed-case short canonical prefix in depends_on resolves via canonicalToId', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '24-canon-case');
+    fs.mkdirSync(phaseDir, { recursive: true });
+
+    // Plan A: descriptive filename — id becomes '24-01-auth-hardening'
+    fs.writeFileSync(
+      path.join(phaseDir, '24-01-auth-hardening-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\ndepends_on: []\n---\n<objective>Plan A.</objective>\n`,
+    );
+    // Plan B: depends_on uses an uppercase short prefix '24-01' — canonicalToId maps '24-01' → '24-01-auth-hardening'
+    fs.writeFileSync(
+      path.join(phaseDir, '24-02-followup-PLAN.md'),
+      `---\nwave: 2\nautonomous: true\ndepends_on:\n  - '24-01'\n---\n<objective>Plan B.</objective>\n`,
+    );
+
+    const result = runGsdTools('phase-plan-index 24', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    const waves = output.waves;
+
+    const wave01 = Object.keys(waves).find(w => waves[w].some(id => id.startsWith('24-01')));
+    const wave02 = Object.keys(waves).find(w => waves[w].some(id => id.startsWith('24-02')));
+    assert.ok(wave01 !== undefined, '24-01-auth-hardening should appear in waves');
+    assert.ok(wave02 !== undefined, '24-02-followup should appear in waves');
+    assert.ok(
+      Number(wave01) < Number(wave02),
+      `24-02 must be in a later wave than 24-01 via canonicalToId lookup (got wave01=${wave01}, wave02=${wave02})`,
+    );
+    // depends_on output: '24-01' is the canonical prefix, not in planMap directly, so falls back to dep as-is
+    const planB = output.plans.find(p => p.id === '24-02-followup');
+    assert.ok(planB !== undefined, '24-02-followup plan must be in output');
+    // The dep '24-01' is not a planMap key (full id is '24-01-auth-hardening'), so output keeps '24-01'
+    assert.deepStrictEqual(planB.depends_on, ['24-01'], 'short canonical prefix dep falls through to as-is in Pass 3 output');
+  });
+
+  // #3785 — plans with no depends_on (empty array) still emit correct output without errors
+  test('#3785: plans with undefined/empty depends_on emit empty array without errors', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '25-no-deps');
+    fs.mkdirSync(phaseDir, { recursive: true });
+
+    // Plan with no depends_on key at all
+    fs.writeFileSync(
+      path.join(phaseDir, '25-01-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\n---\n<objective>Plan A, no deps.</objective>\n`,
+    );
+    // Plan with explicit empty depends_on array
+    fs.writeFileSync(
+      path.join(phaseDir, '25-02-PLAN.md'),
+      `---\nwave: 1\nautonomous: true\ndepends_on: []\n---\n<objective>Plan B, explicit empty deps.</objective>\n`,
+    );
+
+    const result = runGsdTools('phase-plan-index 25', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    const plan01 = output.plans.find(p => p.id === '25-01');
+    const plan02 = output.plans.find(p => p.id === '25-02');
+    assert.ok(plan01 !== undefined, 'plan 25-01 should appear in output');
+    assert.ok(plan02 !== undefined, 'plan 25-02 should appear in output');
+    assert.deepStrictEqual(plan01.depends_on, [], 'plan with no depends_on key must emit empty array');
+    assert.deepStrictEqual(plan02.depends_on, [], 'plan with explicit empty depends_on must emit empty array');
+    // Both independent plans land in the same wave
+    assert.deepStrictEqual(output.waves['1'], ['25-01', '25-02'], 'both no-dep plans should be in wave 1');
+  });
 });
 
 
@@ -930,6 +1131,62 @@ describe('phase add command', () => {
     assert.ok(
       fs.existsSync(path.join(tmpDir, '.planning', 'phases', '04-dashboard')),
       'directory should be 04-dashboard, not 1000-dashboard'
+    );
+  });
+
+  test('CJS scanner [999, 1000] fixture: skips exactly 999 and returns 1001 (regression #3774)', () => {
+    // Locks the BLOCKER fix in phase.cjs: guards at :610, :624, :688, :698 must
+    // use === 999 (not >= 999). With >= 999, phase 1000 is excluded from the
+    // max-scan and the result collapses back toward 1 instead of 1001.
+    //
+    // GSD_WORKSTREAM=ws1 forces the CJS fallback in phase-command-router.cjs.
+    // When GSD_WORKSTREAM is set, planningDir resolves to
+    //   .planning/workstreams/<ws>/ — so ROADMAP.md and phases/ live there.
+    const ws = 'ws1';
+    const planningBase = path.join(tmpDir, '.planning', 'workstreams', ws);
+    fs.mkdirSync(path.join(planningBase, 'phases'), { recursive: true });
+
+    fs.writeFileSync(
+      path.join(planningBase, 'ROADMAP.md'),
+      [
+        '# Roadmap',
+        '',
+        '## Current Milestone: v1.0',
+        '',
+        '### Phase 999: Backlog',
+        '',
+        '**Goal:** Backlog sentinel',
+        '**Plans:** 0 plans',
+        '',
+        '### Phase 1000: First Four-Digit Phase',
+        '',
+        '**Goal:** First canonical phase above backlog sentinel',
+        '**Requirements**: TBD',
+        '**Plans:** 1 plans',
+        '',
+        'Plans:',
+        '- [x] 1000-01 (initial work)',
+        '',
+        '---',
+        '*Last updated: 2026-05-21*',
+        '',
+      ].join('\n')
+    );
+
+    // Create matching phase directories on disk (inside the workstream planning dir)
+    fs.mkdirSync(path.join(planningBase, 'phases', '999-backlog'), { recursive: true });
+    fs.mkdirSync(path.join(planningBase, 'phases', '1000-first-four-digit'), { recursive: true });
+
+    const result = runGsdTools('phase add After One Thousand', tmpDir, { GSD_WORKSTREAM: ws });
+    assert.ok(result.success, `CJS phase add failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    // Must be 1001: skips 999 (backlog sentinel), keeps 1000, adds 1.
+    // With the old >= 999 guard: phase 1000 is excluded → max stays 0 → result = 1.
+    assert.strictEqual(output.phase_number, 1001, 'CJS scanner must return 1001, not 1 (regression #3774)');
+    assert.ok(
+      fs.existsSync(path.join(planningBase, 'phases', '1001-after-one-thousand')),
+      'directory should be 1001-after-one-thousand'
     );
   });
 });
@@ -1357,13 +1614,20 @@ describe('phase insert command', () => {
   });
 
   test('reports actionable error for summary-only placeholder phase without detail section (#3098)', () => {
+    // #3098: a hybrid ROADMAP that has heading-style phases for some phases
+    // but only a bullet summary entry for phase 5 (the detail section is
+    // missing).  Insert must fail with "missing a detail section" rather than
+    // silently inserting in bullet-style — because the surrounding ROADMAP
+    // uses headings, so the absent `### Phase 5:` is a genuine omission.
+    // (Compare with the #3815 case below: a purely bullet-style ROADMAP that
+    // has NO heading-style phases at all is valid and insert should succeed.)
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
-      `# Roadmap\n\n- [ ] **Phase 5: Placeholder**\n`
+      `# Roadmap\n\n### Phase 4: Foundation\n**Goal:** Setup\n\n- [ ] **Phase 5: Placeholder**\n`
     );
 
     const result = runGsdTools('phase insert 5 Hotfix', tmpDir);
-    assert.ok(!result.success, 'should fail when phase is summary-only placeholder');
+    assert.ok(!result.success, 'should fail when phase is summary-only placeholder in a heading-style ROADMAP');
     assert.ok(result.error.includes('missing a detail section'));
   });
 

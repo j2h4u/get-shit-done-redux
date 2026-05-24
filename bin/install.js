@@ -277,7 +277,7 @@ Please install a Linux-native Node.js inside WSL:
   curl -fsSL https://fnm.vercel.app/install | bash
   fnm install --lts
 
-Then re-run: npx get-shit-done-cc@latest
+Then re-run: npx @opengsd/get-shit-done-redux@latest
 `);
     process.exit(1);
   }
@@ -600,7 +600,7 @@ if (hasUninstall) {
 
 // Show help if requested
 if (hasHelp) {
-  console.log(`  ${yellow}Usage:${reset} npx get-shit-done-cc [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-g, --global${reset}              Install globally (to config directory)\n    ${cyan}-l, --local${reset}               Install locally (to current directory)\n    ${cyan}--claude${reset}                  Install for Claude Code only\n    ${cyan}--opencode${reset}                Install for OpenCode only\n    ${cyan}--gemini${reset}                  Install for Gemini only\n    ${cyan}--kilo${reset}                    Install for Kilo only\n    ${cyan}--codex${reset}                   Install for Codex only\n    ${cyan}--copilot${reset}                 Install for Copilot only\n    ${cyan}--antigravity${reset}             Install for Antigravity only\n    ${cyan}--cursor${reset}                  Install for Cursor only\n    ${cyan}--windsurf${reset}                Install for Windsurf only\n    ${cyan}--augment${reset}                 Install for Augment only\n    ${cyan}--trae${reset}                    Install for Trae only\n    ${cyan}--qwen${reset}                    Install for Qwen Code only\n    ${cyan}--hermes${reset}                  Install for Hermes Agent only\n    ${cyan}--cline${reset}                   Install for Cline only\n    ${cyan}--codebuddy${reset}              Install for CodeBuddy only\n    ${cyan}--all${reset}                     Install for all runtimes\n    ${cyan}-u, --uninstall${reset}           Uninstall GSD (remove all GSD files)\n    ${cyan}-c, --config-dir <path>${reset}   Specify custom config directory\n    ${cyan}-h, --help${reset}                Show this help message\n    ${cyan}--force-statusline${reset}        Replace existing statusline config\n    ${cyan}--portable-hooks${reset}          Emit \$HOME-relative hook paths in settings.json\n                              (for WSL/Docker bind-mount setups; also GSD_PORTABLE_HOOKS=1)\n    ${cyan}--profile=<name>${reset}         Install a named skill profile. Profiles:\n                              core     — 7 main-loop skills incl. phase (~130 desc tokens)\n                              standard — ~13 skills incl. phase, review, config (~700)\n                              full     — all 66 skills (default)\n                              Composable: --profile=core,audit installs union of closures.\n                              Profile is persisted and respected by \`gsd update\`.\n    ${cyan}--minimal${reset}                 Alias for --profile=core (back-compat).\n                              Cuts cold-start overhead from ~12k tokens to ~700.\n                              Alias: --core-only.\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime and location)${reset}\n    npx get-shit-done-cc\n\n    ${dim}# Install for Claude Code globally${reset}\n    npx get-shit-done-cc --claude --global\n\n    ${dim}# Install for Gemini globally${reset}\n    npx get-shit-done-cc --gemini --global\n\n    ${dim}# Install for Kilo globally${reset}\n    npx get-shit-done-cc --kilo --global\n\n    ${dim}# Install for Codex globally${reset}\n    npx get-shit-done-cc --codex --global\n\n    ${dim}# Install for Copilot globally${reset}\n    npx get-shit-done-cc --copilot --global\n\n    ${dim}# Install for Copilot locally${reset}\n    npx get-shit-done-cc --copilot --local\n\n    ${dim}# Install for Antigravity globally${reset}\n    npx get-shit-done-cc --antigravity --global\n\n    ${dim}# Install for Antigravity locally${reset}\n    npx get-shit-done-cc --antigravity --local\n\n    ${dim}# Install for Cursor globally${reset}\n    npx get-shit-done-cc --cursor --global\n\n    ${dim}# Install for Cursor locally${reset}\n    npx get-shit-done-cc --cursor --local\n\n    ${dim}# Install for Windsurf globally${reset}\n    npx get-shit-done-cc --windsurf --global\n\n    ${dim}# Install for Windsurf locally${reset}\n    npx get-shit-done-cc --windsurf --local\n\n    ${dim}# Install for Augment globally${reset}\n    npx get-shit-done-cc --augment --global\n\n    ${dim}# Install for Augment locally${reset}\n    npx get-shit-done-cc --augment --local\n\n    ${dim}# Install for Trae globally${reset}\n    npx get-shit-done-cc --trae --global\n\n    ${dim}# Install for Trae locally${reset}\n    npx get-shit-done-cc --trae --local\n\n    ${dim}# Install for Hermes Agent globally${reset}\n    npx get-shit-done-cc --hermes --global\n\n    ${dim}# Install for Hermes Agent locally${reset}\n    npx get-shit-done-cc --hermes --local\n\n    ${dim}# Install for Cline locally${reset}\n    npx get-shit-done-cc --cline --local\n\n    ${dim}# Install for CodeBuddy globally${reset}\n    npx get-shit-done-cc --codebuddy --global\n\n    ${dim}# Install for CodeBuddy locally${reset}\n    npx get-shit-done-cc --codebuddy --local\n\n    ${dim}# Install for all runtimes globally${reset}\n    npx get-shit-done-cc --all --global\n\n    ${dim}# Install to custom config directory${reset}\n    npx get-shit-done-cc --kilo --global --config-dir ~/.kilo-work\n\n    ${dim}# Install to current project only${reset}\n    npx get-shit-done-cc --claude --local\n\n    ${dim}# Uninstall GSD from Cursor globally${reset}\n    npx get-shit-done-cc --cursor --global --uninstall\n\n  ${yellow}Notes:${reset}\n    The --config-dir option is useful when you have multiple configurations.\n    It takes priority over CLAUDE_CONFIG_DIR / OPENCODE_CONFIG_DIR / GEMINI_CONFIG_DIR / KILO_CONFIG_DIR / CODEX_HOME / COPILOT_CONFIG_DIR / ANTIGRAVITY_CONFIG_DIR / CURSOR_CONFIG_DIR / WINDSURF_CONFIG_DIR / AUGMENT_CONFIG_DIR / TRAE_CONFIG_DIR / QWEN_CONFIG_DIR / HERMES_HOME / CLINE_CONFIG_DIR / CODEBUDDY_CONFIG_DIR environment variables.\n`);
+  console.log(`  ${yellow}Usage:${reset} npx @opengsd/get-shit-done-redux [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-g, --global${reset}              Install globally (to config directory)\n    ${cyan}-l, --local${reset}               Install locally (to current directory)\n    ${cyan}--claude${reset}                  Install for Claude Code only\n    ${cyan}--opencode${reset}                Install for OpenCode only\n    ${cyan}--gemini${reset}                  Install for Gemini only\n    ${cyan}--kilo${reset}                    Install for Kilo only\n    ${cyan}--codex${reset}                   Install for Codex only\n    ${cyan}--copilot${reset}                 Install for Copilot only\n    ${cyan}--antigravity${reset}             Install for Antigravity only\n    ${cyan}--cursor${reset}                  Install for Cursor only\n    ${cyan}--windsurf${reset}                Install for Windsurf only\n    ${cyan}--augment${reset}                 Install for Augment only\n    ${cyan}--trae${reset}                    Install for Trae only\n    ${cyan}--qwen${reset}                    Install for Qwen Code only\n    ${cyan}--hermes${reset}                  Install for Hermes Agent only\n    ${cyan}--cline${reset}                   Install for Cline only\n    ${cyan}--codebuddy${reset}              Install for CodeBuddy only\n    ${cyan}--all${reset}                     Install for all runtimes\n    ${cyan}-u, --uninstall${reset}           Uninstall GSD (remove all GSD files)\n    ${cyan}-c, --config-dir <path>${reset}   Specify custom config directory\n    ${cyan}-h, --help${reset}                Show this help message\n    ${cyan}--force-statusline${reset}        Replace existing statusline config\n    ${cyan}--portable-hooks${reset}          Emit \$HOME-relative hook paths in settings.json\n                              (for WSL/Docker bind-mount setups; also GSD_PORTABLE_HOOKS=1)\n    ${cyan}--profile=<name>${reset}         Install a named skill profile. Profiles:\n                              core     — 7 main-loop skills incl. phase (~130 desc tokens)\n                              standard — ~13 skills incl. phase, review, config (~700)\n                              full     — all 66 skills (default)\n                              Composable: --profile=core,audit installs union of closures.\n                              Profile is persisted and respected by \`gsd update\`.\n    ${cyan}--minimal${reset}                 Alias for --profile=core (back-compat).\n                              Cuts cold-start overhead from ~12k tokens to ~700.\n                              Alias: --core-only.\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime and location)${reset}\n    npx @opengsd/get-shit-done-redux\n\n    ${dim}# Install for Claude Code globally${reset}\n    npx @opengsd/get-shit-done-redux --claude --global\n\n    ${dim}# Install for Gemini globally${reset}\n    npx @opengsd/get-shit-done-redux --gemini --global\n\n    ${dim}# Install for Kilo globally${reset}\n    npx @opengsd/get-shit-done-redux --kilo --global\n\n    ${dim}# Install for Codex globally${reset}\n    npx @opengsd/get-shit-done-redux --codex --global\n\n    ${dim}# Install for Copilot globally${reset}\n    npx @opengsd/get-shit-done-redux --copilot --global\n\n    ${dim}# Install for Copilot locally${reset}\n    npx @opengsd/get-shit-done-redux --copilot --local\n\n    ${dim}# Install for Antigravity globally${reset}\n    npx @opengsd/get-shit-done-redux --antigravity --global\n\n    ${dim}# Install for Antigravity locally${reset}\n    npx @opengsd/get-shit-done-redux --antigravity --local\n\n    ${dim}# Install for Cursor globally${reset}\n    npx @opengsd/get-shit-done-redux --cursor --global\n\n    ${dim}# Install for Cursor locally${reset}\n    npx @opengsd/get-shit-done-redux --cursor --local\n\n    ${dim}# Install for Windsurf globally${reset}\n    npx @opengsd/get-shit-done-redux --windsurf --global\n\n    ${dim}# Install for Windsurf locally${reset}\n    npx @opengsd/get-shit-done-redux --windsurf --local\n\n    ${dim}# Install for Augment globally${reset}\n    npx @opengsd/get-shit-done-redux --augment --global\n\n    ${dim}# Install for Augment locally${reset}\n    npx @opengsd/get-shit-done-redux --augment --local\n\n    ${dim}# Install for Trae globally${reset}\n    npx @opengsd/get-shit-done-redux --trae --global\n\n    ${dim}# Install for Trae locally${reset}\n    npx @opengsd/get-shit-done-redux --trae --local\n\n    ${dim}# Install for Hermes Agent globally${reset}\n    npx @opengsd/get-shit-done-redux --hermes --global\n\n    ${dim}# Install for Hermes Agent locally${reset}\n    npx @opengsd/get-shit-done-redux --hermes --local\n\n    ${dim}# Install for Cline locally${reset}\n    npx @opengsd/get-shit-done-redux --cline --local\n\n    ${dim}# Install for CodeBuddy globally${reset}\n    npx @opengsd/get-shit-done-redux --codebuddy --global\n\n    ${dim}# Install for CodeBuddy locally${reset}\n    npx @opengsd/get-shit-done-redux --codebuddy --local\n\n    ${dim}# Install for all runtimes globally${reset}\n    npx @opengsd/get-shit-done-redux --all --global\n\n    ${dim}# Install to custom config directory${reset}\n    npx @opengsd/get-shit-done-redux --kilo --global --config-dir ~/.kilo-work\n\n    ${dim}# Install to current project only${reset}\n    npx @opengsd/get-shit-done-redux --claude --local\n\n    ${dim}# Uninstall GSD from Cursor globally${reset}\n    npx @opengsd/get-shit-done-redux --cursor --global --uninstall\n\n  ${yellow}Notes:${reset}\n    The --config-dir option is useful when you have multiple configurations.\n    It takes priority over CLAUDE_CONFIG_DIR / OPENCODE_CONFIG_DIR / GEMINI_CONFIG_DIR / KILO_CONFIG_DIR / CODEX_HOME / COPILOT_CONFIG_DIR / ANTIGRAVITY_CONFIG_DIR / CURSOR_CONFIG_DIR / WINDSURF_CONFIG_DIR / AUGMENT_CONFIG_DIR / TRAE_CONFIG_DIR / QWEN_CONFIG_DIR / HERMES_HOME / CLINE_CONFIG_DIR / CODEBUDDY_CONFIG_DIR environment variables.\n`);
   process.exit(0);
 }
 
@@ -2579,7 +2579,7 @@ Multi-select workaround:
 - Codex has no \`multiSelect\`. Use sequential single-selects, or present a numbered freeform list asking the user to enter comma-separated numbers.
 
 Execute mode fallback:
-- When \`request_user_input\` is rejected or unavailable, you MUST stop and present the questions as a plain-text numbered list, then wait for the user's reply. Do NOT pick a default and continue (#3018).
+- When \`request_user_input\` is rejected or unavailable, activate TEXT_MODE: append \`--text\` to \`{{GSD_ARGS}}\` so the workflow's built-in text-mode branching takes over. Present every \`AskUserQuestion\` call as a plain-text numbered list, then stop and wait for the user's reply. Do NOT pick a default and continue (#3018 / #3808).
 - You may only proceed without a user answer when one of these is true:
   (a) the invocation included an explicit non-interactive flag (\`--auto\` or \`--all\`),
   (b) the user has explicitly approved a specific default for this question, or
@@ -7740,34 +7740,115 @@ function saveLocalPatches(configDir, pristineCtx) {
       console.log('     ' + dim + f + reset);
     }
 
-    // #2998: populate gsd-pristine/ via the install transform pipeline so the
-    // reapply-patches verifier (#2972) gets a real diff baseline instead of
-    // falling back to its over-broad "every significant backup line" heuristic.
+    // #2998 / #3407: maintain gsd-pristine/ as the diff baseline for the
+    // reapply-patches verifier (#2972).
+    //
+    // #3407 root-cause fix: the prior approach (#3004 CR) wiped gsd-pristine/
+    // and re-populated it from pristineCtx.packageSrc (the NEW release source).
+    // For files that changed between the old and new release this wrote NEW-
+    // release bytes as the pristine baseline while backup-meta.json recorded
+    // OLD-release hashes — a hash mismatch that caused the #3657 verifier guard
+    // (OK_PRISTINE_DRIFT_DETECTED) to skip the baseline and fall back to over-
+    // broad mode on every upgrade.
+    //
+    // Correct approach: `gsd-pristine/` is populated lazily by saveLocalPatches'
+    // regenerate branch (not by a separate install-time step); the fix works by
+    // induction across upgrades — each clean upgrade persists hash-validated
+    // entries for the next run.  During this call we must PRESERVE entries whose
+    // hash matches originalHash, not overwrite them with new-release bytes.
+    //
+    // Per-file decision:
+    //   - sha256(gsd-pristine/X) === originalHash  →  correct; keep it
+    //   - gsd-pristine/X exists but hash mismatch  →  stale from a previous
+    //     buggy run (#3407); remove so verifier falls back cleanly
+    //   - gsd-pristine/X absent                    →  attempt hash-validated
+    //     regeneration: generate candidate from new-release source; if
+    //     sha256(candidate) === originalHash the file is identical between
+    //     old and new releases so candidate bytes ARE the old-release pristine
+    //     and can be used; discard otherwise (over-broad fallback)
     if (pristineCtx) {
-      // #3004 CR: wipe any pre-existing pristine content BEFORE populating
-      // (and again in the catch path). Without this, a previous run's stale
-      // pristine could be picked up by the verifier as if it were the
-      // baseline for THIS modified set, causing a misleading three-way diff.
-      try { fs.rmSync(pristineDir, { recursive: true, force: true }); } catch { /* not present */ }
-      try {
-        const written = populatePristineDir({
-          packageSrc: pristineCtx.packageSrc,
-          pristineDir,
-          modified,
-          runtime: pristineCtx.runtime,
-          pathPrefix: pristineCtx.pathPrefix,
-          isGlobal: pristineCtx.isGlobal,
-        });
-        if (written > 0) {
-          console.log('  ' + green + '✓' + reset + '  Populated ' + cyan + 'gsd-pristine/' + reset + ' (' + written + ' file(s)) for three-way merge');
+      let preserved = 0;
+      // Track which relPaths had stale pristine entries (hash mismatch) that we
+      // removed. After the regeneration pass we compute `removed` = stale entries
+      // that could NOT be recovered (over-broad fallback applies to those only).
+      const stalePaths = new Set();
+      // Track which relPaths were successfully regenerated (from either missing or stale).
+      const regeneratedPaths = new Set();
+      const missingPaths = [];
+      for (const relPath of modified) {
+        const outRef = resolveInstallRelativePath(pristineDir, relPath);
+        if (!outRef) continue;
+        const { fullPath: pristinePath } = outRef;
+        if (fs.existsSync(pristinePath)) {
+          try {
+            const onDiskHash = fileHash(pristinePath);
+            if (onDiskHash === pristineHashes[relPath]) {
+              preserved++;
+              continue; // correct old-release bytes already in place — keep them
+            }
+          } catch { /* read error — treat as mismatch */ }
+          // Hash mismatch or read error: stale pristine from a previous buggy
+          // run (#3407). Remove so verifier falls back to over-broad mode.
+          try { fs.rmSync(pristinePath, { force: true, recursive: true }); } catch { /* best-effort */ }
+          // Only count as removed if the file is actually gone post-removal.
+          if (!fs.existsSync(pristinePath)) {
+            stalePaths.add(relPath);
+          }
         }
-      } catch (err) {
-        // Soft failure: keep the install moving even if the transform pipeline
-        // throws on an unusual configuration. Wipe the partial pristine so the
-        // verifier falls back cleanly to its pre-#2998 heuristic instead of
-        // reading half-populated data (#3004 CR).
-        try { fs.rmSync(pristineDir, { recursive: true, force: true }); } catch { /* best-effort */ }
-        console.log('  ' + yellow + 'i' + reset + '  Could not populate gsd-pristine/ (' + (err && err.message ? err.message : 'unknown') + '). Falls back to over-broad verify heuristic.');
+        // File absent from gsd-pristine/ (or just removed above as stale):
+        // attempt hash-validated regeneration from new-release source.
+        missingPaths.push(relPath);
+      }
+      // Regenerate missing entries into a temp dir, then validate each hash
+      // before promoting. Only files whose new-release generated bytes hash to
+      // originalHash are safe to use — they were unchanged between releases.
+      if (missingPaths.length > 0) {
+        let tempPristineDir = null;
+        try {
+          tempPristineDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-pristine-regen-'));
+          populatePristineDir({
+            packageSrc: pristineCtx.packageSrc,
+            pristineDir: tempPristineDir,
+            modified: missingPaths,
+            runtime: pristineCtx.runtime,
+            pathPrefix: pristineCtx.pathPrefix,
+            isGlobal: pristineCtx.isGlobal,
+          });
+          for (const relPath of missingPaths) {
+            const tempRef = resolveInstallRelativePath(tempPristineDir, relPath);
+            const outRef = resolveInstallRelativePath(pristineDir, relPath);
+            if (!tempRef || !outRef || !fs.existsSync(tempRef.fullPath)) continue;
+            try {
+              const candidateHash = fileHash(tempRef.fullPath);
+              if (candidateHash !== pristineHashes[relPath]) continue; // new-release differs — discard
+              fs.mkdirSync(path.dirname(outRef.fullPath), { recursive: true });
+              fs.copyFileSync(tempRef.fullPath, outRef.fullPath);
+              regeneratedPaths.add(relPath);
+            } catch { /* hash or copy error — skip; over-broad fallback applies */ }
+          }
+        } catch (err) {
+          // Match the pre-fix behavior: log a warning and continue (verifier falls back to over-broad mode for missing files).
+          console.warn(`gsd-pristine regen skipped: ${err.message}`);
+        } finally {
+          if (tempPristineDir) {
+            try { fs.rmSync(tempPristineDir, { recursive: true, force: true }); } catch { /* best-effort */ }
+          }
+        }
+      }
+      // `regenerated` = total files successfully regenerated (from missing OR stale).
+      const regenerated = regeneratedPaths.size;
+      // `removed` = stale entries that were deleted and NOT subsequently regenerated.
+      // Entries that were stale-deleted but then successfully regenerated are counted
+      // only in `regenerated` — the counts are non-overlapping.
+      const removed = [...stalePaths].filter(p => !regeneratedPaths.has(p)).length;
+      if (preserved > 0) {
+        console.log('  ' + green + '✓' + reset + '  Preserved ' + cyan + 'gsd-pristine/' + reset + ' (' + preserved + ' file(s)) for three-way merge');
+      }
+      if (regenerated > 0) {
+        console.log('  ' + green + '✓' + reset + '  Regenerated ' + cyan + 'gsd-pristine/' + reset + ' (' + regenerated + ' file(s)) via hash-validated new-release source');
+      }
+      if (removed > 0) {
+        console.log('  ' + yellow + 'i' + reset + '  Removed ' + removed + ' stale gsd-pristine/ snapshot(s); regenerated ' + regenerated + ' of those — falls back to over-broad verify heuristic for the rest');
       }
     }
   }
@@ -7881,7 +7962,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
     ? targetDir.replace(os.homedir(), '~')
     : targetDir.replace(process.cwd(), '.');
 
-  // #3406: warn if a stale standalone `@gsd-build/sdk` is globally installed
+  // #3406: warn if a stale standalone `@opengsd/gsd-sdk` is globally installed
   // and shadows the `gsd-sdk` shim this installer wires up. Only meaningful
   // for global installs (the shim collision lives in the global node_modules
   // bin dir). Guarded by GSD_SKIP_STALE_SDK_CHECK so CI/tests can silence it.
@@ -7898,7 +7979,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
         try {
           return execFileSync(
             npmCmd,
-            ['ls', '-g', '@gsd-build/sdk', '--json', '--depth=0'],
+            ['ls', '-g', '@opengsd/gsd-sdk', '--json', '--depth=0'],
             { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 }
           );
         } catch (e) {
@@ -8230,7 +8311,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
   // behind by a previous version), there is no actual "user choice" to
   // make — the file is a known GSD-managed artifact and the installer is
   // about to write the fresh bundled version. Gating the resolver on
-  // `!isTTY` made `npx get-shit-done-cc@latest --codex` hard-abort with
+  // `!isTTY` made `npx @opengsd/get-shit-done-redux@latest --codex` hard-abort with
   // 12 blocked bundled hooks. The env-override branch (operator-supplied
   // GSD_INSTALLER_MIGRATION_RESOLVE) still applies only in non-TTY mode.
   const _migrationIsTty = process.stdin && process.stdin.isTTY === true;
@@ -8472,7 +8553,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
   // Copy agents to agents directory.
   // Skipped under --minimal: gsd-* subagent descriptions are eagerly loaded
   // into the runtime's Agent tool schema, costing ~6k tokens per turn even
-  // when no GSD workflow is active. See gsd-build/get-shit-done#2762.
+  // when no GSD workflow is active. See open-gsd/get-shit-done-redux#2762.
   // Note: agentsSrc is declared as let before the enclosing try block so it
   // is accessible by installCodexConfig() in the Codex config section below.
   agentsSrc = _stageAgents(path.join(src, 'agents'));
@@ -10206,7 +10287,7 @@ function maybeSuggestPathExport(globalBin, homeDir) {
  * Verify the prebuilt SDK dist is present and the gsd-sdk shim is wired up.
  *
  * As of fix/2441-sdk-decouple, sdk/dist/ is shipped prebuilt inside the
- * get-shit-done-cc npm tarball. The parent package declares a bin entry
+ * @opengsd/get-shit-done-redux npm tarball. The parent package declares a bin entry
  * "gsd-sdk": "bin/gsd-sdk.js" so npm chmods the shim correctly when
  * installing from a packed tarball — eliminating the mode-644 failure
  * (issue #2453) and the build-from-source failure modes (#2439, #2441).
@@ -10225,15 +10306,15 @@ function maybeSuggestPathExport(globalBin, homeDir) {
  * `sdk/dist/` is missing:
  *
  *   - `tarball` + `npxCache: true`
- *       User ran `npx get-shit-done-cc@latest`. sdk/ lives under
- *       `<npm-cache>/_npx/<hash>/node_modules/get-shit-done-cc/sdk` which
+ *       User ran `npx @opengsd/get-shit-done-redux@latest`. sdk/ lives under
+ *       `<npm-cache>/_npx/<hash>/node_modules/@opengsd/get-shit-done-redux/sdk` which
  *       is treated as read-only by npm/npx on Windows (#2649). We MUST
  *       NOT attempt a nested `npm install` there — it will fail with
  *       EACCES/EPERM and produce the misleading "Failed to npm install
  *       in sdk/" error the user reported. Point at the global upgrade.
  *
  *   - `tarball` + `npxCache: false`
- *       User ran a global install (`npm i -g get-shit-done-cc`). sdk/dist
+ *       User ran a global install (`npm i -g @opengsd/get-shit-done-redux`). sdk/dist
  *       ships in the published tarball; if it's missing, the published
  *       artifact itself is broken (see #2647). Same user-facing fix:
  *       upgrade to latest.
@@ -10296,7 +10377,7 @@ function classifySdkInstall(sdkDir) {
  *     context: 'npx-cache' | 'tarball' | 'dev-clone',
  *     missing_path: '<path>/sdk/dist/cli.js',
  *     missing_artifact: 'sdk/dist',
- *     fix_command: 'npm install -g get-shit-done-cc@latest' | 'cd sdk && npm install && npm run build',
+ *     fix_command: 'npm install -g @opengsd/get-shit-done-redux@latest' | 'cd sdk && npm install && npm run build',
  *     attempted_nested_install: false,         // contract: never true
  *   }
  */
@@ -10305,7 +10386,7 @@ function buildSdkFailFastReport(sdkDir, sdkCliPath) {
   let context, fix_command;
   if (ctx.mode === 'tarball') {
     context = ctx.npxCache ? 'npx-cache' : 'tarball';
-    fix_command = 'npm install -g get-shit-done-cc@latest';
+    fix_command = 'npm install -g @opengsd/get-shit-done-redux@latest';
   } else {
     context = 'dev-clone';
     fix_command = 'cd sdk && npm install && npm run build';
@@ -10342,16 +10423,16 @@ function renderSdkFailFastReport(ir) {
     console.error(`  Fix: install a version that ships sdk/dist/ globally:`);
     console.error(`    ${cyan}${ir.fix_command}${reset}`);
     console.error(`  Or, if you prefer a one-shot run, clear the npx cache first:`);
-    console.error(`    ${cyan}npx --yes get-shit-done-cc@latest${reset}`);
+    console.error(`    ${cyan}npx --yes @opengsd/get-shit-done-redux@latest${reset}`);
     console.error(`  Or build from source (git clone):`);
-    console.error(`    ${cyan}git clone https://github.com/gsd-build/get-shit-done && cd get-shit-done/sdk && npm install && npm run build${reset}`);
+    console.error(`    ${cyan}git clone https://github.com/open-gsd/get-shit-done-redux && cd get-shit-done/sdk && npm install && npm run build${reset}`);
   } else if (ir.context === 'tarball') {
     console.error(`  The published tarball appears to be missing sdk/dist/ (see #2647).`);
     console.error('');
     console.error(`  Fix: install a version that ships sdk/dist/ globally:`);
     console.error(`    ${cyan}${ir.fix_command}${reset}`);
     console.error(`  Or build from source (git clone):`);
-    console.error(`    ${cyan}git clone https://github.com/gsd-build/get-shit-done && cd get-shit-done/sdk && npm install && npm run build${reset}`);
+    console.error(`    ${cyan}git clone https://github.com/open-gsd/get-shit-done-redux && cd get-shit-done/sdk && npm install && npm run build${reset}`);
   } else {
     console.error(`  Running from a git clone — build the SDK first:`);
     console.error(`    ${cyan}${ir.fix_command}${reset}`);
@@ -10417,7 +10498,7 @@ function installSdkIfNeeded(opts) {
   }
 
   // #2775: do not assert "GSD SDK ready" until `gsd-sdk` actually resolves on
-  // PATH. `npx get-shit-done-cc` only links the package's primary bin; the
+  // PATH. `npx @opengsd/get-shit-done-redux` only links the package's primary bin; the
   // secondary `gsd-sdk` shim is left dangling under the npx cache and is NOT
   // callable as a bare command. The previous file-presence-only check was a
   // strictly weaker invariant than the one workflows depend on
@@ -10494,7 +10575,7 @@ function installSdkIfNeeded(opts) {
   // the persistent-PATH check — that is the best available invariant.
 
   if (onPath) {
-    const versionReport = buildGsdSdkVersionMismatchReport(resolvedSdkPath, pkg.version);
+    const versionReport = buildGsdSdkVersionMismatchReport(resolvedSdkPath, pkg.version, { isLocal: !!opts.isLocal });
     if (versionReport) {
       renderGsdSdkVersionMismatchReport(versionReport);
     } else {
@@ -10538,25 +10619,25 @@ function installSdkIfNeeded(opts) {
 }
 
 /**
- * #3406 helper: detect a stale globally-installed `@gsd-build/sdk` package
- * shadowing the `gsd-sdk` shim that `get-shit-done-cc` installs.
+ * #3406 helper: detect a stale globally-installed `@opengsd/gsd-sdk` package
+ * shadowing the `gsd-sdk` shim that `@opengsd/get-shit-done-redux` installs.
  *
- * Background: `@gsd-build/sdk@0.1.0` was published once and never updated
- * (the SDK now ships embedded in `get-shit-done-cc`). When a user has the
+ * Background: `@opengsd/gsd-sdk@0.1.0` was published once and never updated
+ * (the SDK now ships embedded in `@opengsd/get-shit-done-redux`). When a user has the
  * 0.1.0 standalone package installed globally, its `gsd-sdk` bin shadows
- * the one `get-shit-done-cc` provides — and the 0.1.0 binary only knows
+ * the one `@opengsd/get-shit-done-redux` provides — and the 0.1.0 binary only knows
  * `run | auto | init` (no `query`), so every `gsd-sdk query <command>`
  * call from skills/hooks fails until the user runs
- * `npm uninstall -g @gsd-build/sdk`.
+ * `npm uninstall -g @opengsd/gsd-sdk`.
  *
  * Pure function: takes an injected `runNpmLs` executor that returns
- * `npm ls -g @gsd-build/sdk --json --depth=0` stdout. Returns:
+ * `npm ls -g @opengsd/gsd-sdk --json --depth=0` stdout. Returns:
  *   `{ stale: true, version }` when the package is present.
  *   `{ stale: false }` for every other input — including:
  *     - executor throws (npm missing / EACCES / network),
  *     - executor returns null/undefined/non-string,
  *     - stdout is not parseable JSON,
- *     - the JSON has no `.dependencies['@gsd-build/sdk']` field.
+ *     - the JSON has no `.dependencies['@opengsd/gsd-sdk']` field.
  *
  * Fail-closed conservative: we'd rather miss a detection than fire a
  * false-positive warning that confuses users who have a fine install.
@@ -10578,11 +10659,11 @@ function detectStaleStandaloneSdk(runNpmLs) {
   }
   const deps = parsed && typeof parsed === 'object' ? parsed.dependencies : null;
   if (!deps || typeof deps !== 'object') return { stale: false };
-  const entry = deps['@gsd-build/sdk'];
+  const entry = deps['@opengsd/gsd-sdk'];
   if (!entry || typeof entry !== 'object') return { stale: false };
   const version = typeof entry.version === 'string' ? entry.version : '(unknown)';
   // #3406 CR: scope stale detection to the known-bad version (0.1.0). Any
-  // newer @gsd-build/sdk version is an intentional install (or a future
+  // newer @opengsd/gsd-sdk version is an intentional install (or a future
   // republish) and should not be flagged as a shim shadow. Without this
   // narrowing, a maintainer's local-link or a legitimate future publish
   // would trigger a misleading "stale shadow" warning on every install.
@@ -10598,16 +10679,16 @@ function detectStaleStandaloneSdk(runNpmLs) {
 function formatStaleStandaloneSdkWarning(info) {
   const version = info && info.version ? info.version : '(unknown)';
   return [
-    '⚠  A stale globally-installed @gsd-build/sdk@' + version + ' is shadowing the',
-    '   `gsd-sdk` shim that get-shit-done-cc provides. The standalone package',
+    '⚠  A stale globally-installed @opengsd/gsd-sdk@' + version + ' is shadowing the',
+    '   `gsd-sdk` shim that @opengsd/get-shit-done-redux provides. The standalone package',
     '   only knows `run | auto | init` — every `gsd-sdk query <cmd>` call from',
     '   skills and hooks will fail until you remove it.',
     '',
     '   Remediation:',
-    '     npm uninstall -g @gsd-build/sdk',
-    '     npx -y get-shit-done-cc@latest --<runtime> --global',
+    '     npm uninstall -g @opengsd/gsd-sdk',
+    '     npx -y @opengsd/get-shit-done-redux@latest --<runtime> --global',
     '',
-    '   Tracking: #3406 — https://github.com/gsd-build/get-shit-done/issues/3406',
+    '   Tracking: #3406 — https://github.com/open-gsd/get-shit-done-redux/issues/3406',
   ].join('\n');
 }
 
@@ -10758,17 +10839,26 @@ function readGsdSdkVersion(sdkPath) {
   }
 }
 
-function buildGsdSdkVersionMismatchReport(sdkPath, expectedVersion) {
+function buildGsdSdkVersionMismatchReport(sdkPath, expectedVersion, opts) {
   const actualVersion = readGsdSdkVersion(sdkPath);
   if (!actualVersion || !expectedVersion) return null;
   if (actualVersion === expectedVersion) return null;
+  // #3668: local installs should NOT be told to run `npm install -g` —
+  // that contradicts the intent of --local (self-contained, no global dep).
+  // For local installs the correct remediation is to re-run the local
+  // installer (e.g. `npx get-shit-done-cc@latest --claude --local`).
+  const isLocal = opts && opts.isLocal;
+  const fix_command = isLocal
+    ? 'npx @opengsd/get-shit-done-redux@latest --claude --local'
+    : 'npm install -g @opengsd/get-shit-done-redux@latest';
   return {
     ok: false,
     reason: 'gsd_sdk_version_mismatch',
     sdk_path: sdkPath,
     actual_version: actualVersion,
     expected_version: expectedVersion,
-    fix_command: 'npm install -g get-shit-done-cc@latest',
+    fix_command,
+    is_local: !!isLocal,
   };
 }
 
@@ -11237,6 +11327,8 @@ module.exports = {
     formatStaleStandaloneSdkWarning,
     buildSdkFailFastReport,
     renderSdkFailFastReport,
+    buildGsdSdkVersionMismatchReport,
+    renderGsdSdkVersionMismatchReport,
     classifySdkInstall,
     readGsdSdkVersion,
     convertClaudeCommandToCodexSkill,

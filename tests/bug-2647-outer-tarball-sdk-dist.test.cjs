@@ -1,19 +1,19 @@
 /**
  * Regression test for bug #2647 (also partial fix for #2649).
  *
- * v1.38.3 of get-shit-done-cc shipped with:
+ * v1.38.3 of get-shit-done-redux shipped with:
  *   - `files` array missing `sdk/dist`
  *   - `prepublishOnly` only running `build:hooks`, not `build:sdk`
  *
  * Result: the published tarball had no `sdk/dist/cli.js`. The `gsd-sdk`
  * bin shim in `bin/gsd-sdk.js` resolves `<pkg>/sdk/dist/cli.js`, which
  * didn't exist, so PATH fell through to the separately installed
- * `@gsd-build/sdk@0.1.0` (predates the `query` subcommand).
+ * `@opengsd/gsd-sdk@0.1.0` (predates the `query` subcommand).
  *
  * Every `gsd-sdk query <noun>` call in workflow docs thus failed on
  * fresh installs of 1.38.3.
  *
- * This test guards the OUTER package.json (get-shit-done-cc) so future
+ * This test guards the OUTER package.json (get-shit-done-redux) so future
  * edits cannot silently drop either safeguard. A sibling test at
  * tests/bug-2519-sdk-tarball-dist.test.cjs guards the inner sdk package.
  *

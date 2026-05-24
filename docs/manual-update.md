@@ -1,11 +1,11 @@
 # Manual Update (Non-npm Install)
 
-Use this procedure when `npx get-shit-done-cc@latest` is unavailable — e.g. during a publish outage or if you are working directly from the source repo.
+Use this procedure when `npx @opengsd/get-shit-done-redux@latest` is unavailable — e.g. during a publish outage or if you are working directly from the source repo.
 
 ## Prerequisites
 
 - Node.js installed
-- This repo cloned locally (`git clone https://github.com/gsd-build/get-shit-done`)
+- This repo cloned locally (`git clone https://github.com/open-gsd/get-shit-done-redux`)
 
 ## Steps
 

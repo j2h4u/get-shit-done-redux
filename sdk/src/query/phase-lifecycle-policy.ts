@@ -51,16 +51,37 @@ export function parseMultiwordArg(args: string[], flag: string): string | null {
   return tokens.length > 0 ? tokens.join(' ') : null;
 }
 
+/**
+ * Extract a one-liner from the summary body when it is not in frontmatter.
+ *
+ * Scope: content from the first heading to the next heading of ANY level.
+ * Per GFM ATX headings (https://github.github.com/gfm/#atx-headings),
+ * a heading of any level terminates the scope -- including sub-headings
+ * even when the title heading is H1.
+ *
+ * #3 defect-3: the original regex matched the first bold in the entire body
+ * after any heading, leaking bold text from later sections (e.g. deviation
+ * entries) into the one-liner.
+ */
 export function extractOneLinerFromBody(content: string): string | null {
   if (!content) return null;
   const body = content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, '');
-  const match = body.match(/^#[^\n]*\n+\*\*([^*]+)\*\*/m);
-  return match ? match[1]!.trim() : null;
+  // Find the first heading of any level (GFM section ATX headings)
+  const headingMatch = body.match(/^(#{1,6}\s[^\n]+\n)/m);
+  if (!headingMatch || headingMatch.index === undefined) return null;
+  const afterHeading = body.slice(headingMatch.index + headingMatch[0].length);
+  // Bound to the first section: truncate at the next heading of any level
+  const nextHeadingMatch = afterHeading.match(/^#{1,6}\s/m);
+  const sectionScope = nextHeadingMatch && nextHeadingMatch.index !== undefined
+    ? afterHeading.slice(0, nextHeadingMatch.index)
+    : afterHeading;
+  const boldMatch = sectionScope.match(/\*\*([^*]+)\*\*/);
+  return boldMatch ? boldMatch[1]!.trim() : null;
 }
 
 /**
  * Scan highest sequential phase number in milestone content.
- * Skips backlog lanes (`999.x`).
+ * Skips exactly the backlog sentinel (`999`); phases 1000+ are valid canonical IDs.
  */
 export function scanSequentialMaxPhaseFromMilestone(milestoneContent: string): number {
   const phasePattern = /(?:^|\n)\s*(?:[-*]\s*(?:\[[x ]\]\s*)?|#{2,4}\s*|\*{1,2}\s*)Phase\s+(\d+)[A-Z]?(?:\.\d+)*:/gi;
@@ -68,7 +89,7 @@ export function scanSequentialMaxPhaseFromMilestone(milestoneContent: string): n
   let m: RegExpExecArray | null;
   while ((m = phasePattern.exec(milestoneContent)) !== null) {
     const num = parseInt(m[1], 10);
-    if (num >= 999) continue;
+    if (num === 999) continue;
     if (num > maxPhase) maxPhase = num;
   }
   return maxPhase;
@@ -85,7 +106,7 @@ export function scanSequentialMaxPhaseFromDirs(dirNames: string[]): number {
     const match = dirNumPattern.exec(dirName);
     if (!match) continue;
     const num = parseInt(match[1], 10);
-    if (num >= 999) continue;
+    if (num === 999) continue;
     if (num > maxPhase) maxPhase = num;
   }
   return maxPhase;

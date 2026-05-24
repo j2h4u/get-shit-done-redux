@@ -1,6 +1,6 @@
 {
-  "name": "@gsd-build/sdk",
-  "version": "1.50.0-canary.0",
+  "name": "@opengsd/gsd-sdk",
+  "version": "1.0.0",
   "description": "GSD SDK — programmatic interface for running GSD plans via the Agent SDK",
   "type": "module",
   "main": "dist/index.js",
@@ -21,15 +21,18 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gsd-build/get-shit-done.git",
+    "url": "git+https://github.com/open-gsd/get-shit-done-redux.git",
     "directory": "sdk"
   },
-  "homepage": "https://github.com/gsd-build/get-shit-done/tree/main/sdk",
+  "homepage": "https://github.com/open-gsd/get-shit-done-redux/tree/main/sdk",
   "bugs": {
-    "url": "https://github.com/gsd-build/get-shit-done/issues"
+    "url": "https://github.com/open-gsd/get-shit-done-redux/issues"
   },
   "author": "TÂCHES",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=22.0.0"
   },
@@ -54,6 +57,14 @@
     "check:decisions-fresh": "npm run build && node scripts/check-decisions-fresh.mjs",
     "gen:workstream-name-policy": "npm run build && node scripts/gen-workstream-name-policy.mjs",
     "check:workstream-name-policy-fresh": "npm run build && node scripts/check-workstream-name-policy-fresh.mjs",
+    "gen:validate": "npm run build && node scripts/gen-validate.mjs",
+    "check:validate-fresh": "npm run build && node scripts/check-validate-fresh.mjs",
+    "gen:phase": "npm run build && node scripts/gen-phase.mjs",
+    "check:phase-fresh": "npm run build && node scripts/check-phase-fresh.mjs",
+    "gen:phase-lifecycle": "node scripts/gen-phase-lifecycle.mjs",
+    "check:phase-lifecycle-fresh": "node scripts/check-phase-lifecycle-fresh.mjs",
+    "gen:phase-lifecycle-policy": "npm run build && node scripts/gen-phase-lifecycle-policy.mjs",
+    "check:phase-lifecycle-policy-fresh": "npm run build && node scripts/check-phase-lifecycle-policy-fresh.mjs",
     "prepublishOnly": "rm -rf dist && tsc && chmod +x dist/cli.js",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",

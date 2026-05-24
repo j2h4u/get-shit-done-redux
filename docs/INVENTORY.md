@@ -60,7 +60,7 @@ Full roster at `commands/gsd/*.md`. The groupings below mirror `docs/COMMANDS.md
 
 ### Namespace Meta-Skills
 
-These six routers are descriptor-only entries that the model picks first; the body of each contains a routing table that points at the correct concrete sub-skill. They exist to keep the eager skill-listing token cost low while the full surface remains reachable. See [#2792](https://github.com/gsd-build/get-shit-done/issues/2792) for the rationale; the routing tables target the post-[#2790](https://github.com/gsd-build/get-shit-done/issues/2790) consolidated surface.
+These six routers are descriptor-only entries that the model picks first; the body of each contains a routing table that points at the correct concrete sub-skill. They exist to keep the eager skill-listing token cost low while the full surface remains reachable. See [#2792](https://github.com/open-gsd/get-shit-done-redux/issues/2792) for the rationale; the routing tables target the post-[#2790](https://github.com/open-gsd/get-shit-done-redux/issues/2790) consolidated surface.
 
 | Command | Role | Source |
 |---------|------|--------|
@@ -262,7 +262,7 @@ Full roster at `get-shit-done/workflows/*.md`. Workflows are thin orchestrators 
 
 ---
 
-## References (61 shipped)
+## References (62 shipped)
 
 Full roster at `get-shit-done/references/*.md`. References are shared knowledge documents that workflows and agents `@-reference`. The groupings below match [`docs/ARCHITECTURE.md`](ARCHITECTURE.md#references-get-shit-donereferencesmd) — core, workflow, thinking-model clusters, and the modular planner decomposition.
 
@@ -353,15 +353,16 @@ The `gsd-planner` agent is decomposed into a core agent plus reference modules t
 | `planner-mvp-mode.md` | Vertical-slice planning rules for MVP mode. |
 | `planner-human-verify-mode.md` | Rules for `workflow.human_verify_mode = end-of-phase`: suppress `checkpoint:human-verify` task emission and route deferred items via `<verify><human-check>`. |
 | `planner-graphify-auto-update.md` | How `load_graph_context` surfaces `.last-build-status.json` auto-update state (running / failed / stale head) alongside the existing staleness annotation. Opt-in via `graphify.auto_update` (#3347). |
+| `planner-interface-context.md` | Interface context rules for executors — how to extract key interfaces/types/exports from existing code and document new interfaces that downstream plans will consume. |
 | `skeleton-template.md` | SKELETON.md template emitted for new-project Walking Skeleton (Phase 1 + `--mvp`). |
 | `user-story-template.md` | User story format for MVP planning — "As a / I want to / So that" structured fields. |
 | `spidr-splitting.md` | SPIDR splitting decomposition rules for handling large user stories in MVP mode. |
 
-> **Subdirectory:** `get-shit-done/references/few-shot-examples/` contains additional few-shot examples (`plan-checker.md`, `verifier.md`) that are referenced from specific agents. These are not counted in the 61 top-level references.
+> **Subdirectory:** `get-shit-done/references/few-shot-examples/` contains additional few-shot examples (`plan-checker.md`, `verifier.md`) that are referenced from specific agents. These are not counted in the 62 top-level references.
 
 ---
 
-## CLI Modules (73 shipped)
+## CLI Modules (79 shipped)
 
 Full listing: `get-shit-done/bin/lib/*.cjs`.
 
@@ -376,6 +377,7 @@ Full listing: `get-shit-done/bin/lib/*.cjs`.
 | `clusters.cjs` | Skill cluster definitions for the runtime surface module (ADR-0011 Phase 2) |
 | `code-review-flags.cjs` | Typed flag parser for `/gsd:code-review`; exports `parseCodeReviewFlags(argv)` (→ `{ fix, all, auto, depth, files }`) and `resolveCodeReviewWorkflow(flags)` (→ `'code-review.md' \| 'code-review-fix.md'`); canonical dispatch seam for `--fix`/`--all`/`--auto` routing |
 | `command-aliases.generated.cjs` | Generated CJS alias/subcommand metadata for manifest-backed family routers |
+| `command-routing-hub.cjs` | Pure-result dispatch hub that centralizes mode decision (SDK vs CJS), error taxonomy, and no-throw contract for all command-family routers (#3788) |
 | `commands.cjs` | Misc CLI commands (slug, timestamp, todos, scaffolding, stats) |
 | `config-schema.cjs` | Single source of truth for `VALID_CONFIG_KEYS` and dynamic key patterns; imported by both the validator and the config-schema-docs parity test |
 | `config.cjs` | `config.json` read/write, section initialization; imports validator from `config-schema.cjs` |
@@ -403,7 +405,10 @@ Full listing: `get-shit-done/bin/lib/*.cjs`.
 | `model-catalog.cjs` | CJS adapter over the shared model catalog JSON; exports canonical runtime tier defaults, agent profile maps, alias maps, and routing metadata for all CLI consumers |
 | `model-profiles.cjs` | Backward-compatible profile helpers derived from `model-catalog.cjs`; no longer owns its own model table |
 | `phase-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools phase` |
+| `phase-lifecycle-policy.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/query/phase-lifecycle-policy.ts` via `sdk/scripts/gen-phase-lifecycle-policy.mjs`; pure computation helpers for phase directory naming, roadmap entry generation, decimal-phase management, and ID computation; do not edit directly |
+| `phase-lifecycle.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/query/phase-lifecycle.ts` via `sdk/scripts/gen-phase-lifecycle.mjs`; pure-computation phase lifecycle helpers extracted from the phase-lifecycle SDK handler; do not edit directly |
 | `phase.cjs` | Phase directory operations, decimal numbering, plan indexing |
+| `phase.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/query/phase.ts` via `sdk/scripts/gen-phase.mjs`; pure helper functions for phase query shared between the CJS CLI and SDK; no I/O, no async, no filesystem operations; do not edit directly |
 | `phases-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools phases` |
 | `plan-scan.cjs` | CJS shim adapter — re-exports from `plan-scan.generated.cjs` (Phase 6/#3575 Shared Module migration) |
 | `plan-scan.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/query/plan-scan.ts` via `sdk/scripts/gen-plan-scan.mjs`; canonical phase-plan scanner for detecting plan and summary files in flat and nested layouts (k014); do not edit directly |
@@ -416,6 +421,7 @@ Full listing: `get-shit-done/bin/lib/*.cjs`.
 | `roadmap-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools roadmap` |
 | `roadmap.cjs` | ROADMAP.md parsing, phase extraction, plan progress |
 | `runtime-artifact-layout.cjs` | Runtime artifact layout module — resolves the artifact directory shapes (commands, agents, skills) for each supported runtime; single source of truth for per-runtime artifact placement (#3663) |
+| `runtime-name-policy.cjs` | Runtime name normalization policy — canonical token sanitization for runtime identifiers used in path construction and display |
 | `runtime-homes.cjs` | Canonical runtime → global config/skills directory mapping; first-class support for all 15 runtimes including Hermes nested layout and Cline rules-based exclusion (#3126) |
 | `runtime-slash.cjs` | Runtime-aware slash-command formatter — single source of truth for emitting `/gsd-<cmd>` (skills-based runtimes) and `$gsd-<cmd>` (codex) in user-facing output and persisted artifacts (#3584) |
 | `schema-detect.cjs` | CJS shim adapter — re-exports from `schema-detect.generated.cjs` (Phase 6/#3575 Shared Module migration) |
@@ -432,6 +438,7 @@ Full listing: `get-shit-done/bin/lib/*.cjs`.
 | `template.cjs` | Template selection and filling with variable substitution |
 | `uat.cjs` | UAT file parsing, verification debt tracking, audit-uat support |
 | `validate-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools validate` |
+| `validate.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/query/validate.ts` via `sdk/scripts/gen-validate.mjs`; pure phase variant normalization helpers (`phaseVariants`, `buildRoadmapPhaseVariants`, `buildNotStartedPhaseVariants`) used by `verify.cjs` for W006/W007 checks; no I/O, no async; do not edit directly |
 | `verify-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools verify` |
 | `verify.cjs` | Plan structure, phase completeness, reference, commit validation |
 | `workstream-inventory-builder.generated.cjs` | GENERATED — pure workstream inventory projection builder; CJS artifact emitted from `sdk/src/workstream-inventory/builder.ts` via `sdk/scripts/gen-workstream-inventory-builder.mjs`; do not edit directly |

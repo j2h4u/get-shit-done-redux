@@ -325,7 +325,7 @@ describe('phaseAdd', () => {
     expect(roadmap).toContain('**Goal:** [To be planned]');
   });
 
-  it('skips phases >= 999 when calculating next number (backlog exclusion)', async () => {
+  it('skips exactly phase 999 (backlog sentinel) when calculating next number', async () => {
     const { phaseAdd } = await import('./phase-lifecycle.js');
     const roadmapWith999 = MINIMAL_ROADMAP.replace(
       '---\n*Last updated',
@@ -337,6 +337,105 @@ describe('phaseAdd', () => {
     const data = result.data as Record<string, unknown>;
     // Should be 11, not 1000
     expect(data.phase_number).toBe(11);
+  });
+
+  it('returns correct next phase id for projects using 1000+ canonical phase numbers (regression #3774)', async () => {
+    // Bug: scanSequentialMaxPhaseFromMilestone and scanSequentialMaxPhaseFromDirs
+    // used `num >= 999` instead of `num === 999`, causing every phase ≥ 1000 to be
+    // excluded from the max-scan. computeNextSequentialPhaseId returned 1 (0+1)
+    // instead of 1501 for a project whose highest phase is 1500.
+    const { phaseAdd } = await import('./phase-lifecycle.js');
+
+    const roadmapWith1000Plus = [
+      '# Roadmap',
+      '',
+      '## Current Milestone: v10.0 Large Project',
+      '',
+      '### Phase 1000: Foundation',
+      '',
+      '**Goal:** Foundation',
+      '**Requirements**: TBD',
+      '**Plans:** 1 plans',
+      '',
+      'Plans:',
+      '- [x] 1000-01 (Foundation setup)',
+      '',
+      '### Phase 1500: Latest',
+      '',
+      '**Goal:** Latest',
+      '**Requirements**: TBD',
+      '**Depends on:** Phase 1499',
+      '**Plans:** 1 plans',
+      '',
+      'Plans:',
+      '- [x] 1500-01 (Latest step)',
+      '',
+      '---',
+      '*Last updated: 2026-05-20*',
+      '',
+    ].join('\n');
+
+    const phases = [
+      '1000-foundation',
+      '1100-alpha',
+      '1200-beta',
+      '1300-gamma',
+      '1400-delta',
+      '1500-latest',
+    ];
+
+    await setupTestProject(tmpDir, { roadmap: roadmapWith1000Plus, phases });
+
+    const result = await phaseAdd(['Next After 1500'], tmpDir);
+    const data = result.data as Record<string, unknown>;
+    // Must be 1501, not 1 (the pre-fix bug value)
+    expect(data.phase_number).toBe(1501);
+  });
+
+  it('distinguishes === 999 guard from === 1000 off-by-one: [999, 1000] fixture must yield 1001 (regression #3774)', async () => {
+    // Distinguishing fixture: phases [999, 1000] on disk + in ROADMAP.
+    // With correct guard (=== 999): skips 999, keeps 1000 as max → next = 1001 ✓
+    // With off-by-one guard (=== 1000): skips 1000, keeps 999 → max = 999 but
+    //   999 is itself skipped by the equality guard (999 === 999 is true when
+    //   the guard fires), so actually keeps nothing → max = 0 → next = 1 ✗.
+    //   Either way, the result diverges from 1001, catching the regression.
+    const { phaseAdd } = await import('./phase-lifecycle.js');
+
+    const roadmapWith999and1000 = [
+      '# Roadmap',
+      '',
+      '## Current Milestone: v1.0',
+      '',
+      '### Phase 999: Backlog',
+      '',
+      '**Goal:** Backlog sentinel',
+      '**Plans:** 0 plans',
+      '',
+      '### Phase 1000: First Four-Digit Phase',
+      '',
+      '**Goal:** First canonical phase above backlog sentinel',
+      '**Requirements**: TBD',
+      '**Plans:** 1 plans',
+      '',
+      'Plans:',
+      '- [x] 1000-01 (initial work)',
+      '',
+      '---',
+      '*Last updated: 2026-05-21*',
+      '',
+    ].join('\n');
+
+    const phases = [
+      '999-backlog',
+      '1000-first-four-digit',
+    ];
+
+    await setupTestProject(tmpDir, { roadmap: roadmapWith999and1000, phases });
+
+    const result = await phaseAdd(['After One Thousand'], tmpDir);
+    const data = result.data as Record<string, unknown>;
+    // Must be 1001: skips 999 (backlog sentinel), keeps 1000 as max, adds 1
+    expect(data.phase_number).toBe(1001);
   });
 
   it('throws GSDError with Validation for empty description', async () => {
@@ -704,6 +803,123 @@ describe('phaseInsert', () => {
     await setupTestProject(tmpDir);
 
     await expect(phaseInsert([], tmpDir)).rejects.toThrow('after-phase and description required');
+  });
+
+  it('#3098 preserved: throws when bullet-only entry in a heading-style ROADMAP (hybrid = missing detail section)', async () => {
+    // A hybrid ROADMAP: phase 9 has a heading but phase 10 only has a bullet
+    // summary entry.  Insert must still reject with "missing a detail section"
+    // because the surrounding ROADMAP uses heading-style phases.
+    const { phaseInsert } = await import('./phase-lifecycle.js');
+    const hybridRoadmap = `# Roadmap\n\n## Current Milestone\n\n### Phase 9: Foundation\n\n- [ ] **Phase 10: Queries**\n`;
+    await setupTestProject(tmpDir, {
+      roadmap: hybridRoadmap,
+      phases: ['09-foundation'],
+    });
+
+    await expect(phaseInsert(['10', 'Hotfix'], tmpDir)).rejects.toThrow('missing a detail section');
+  });
+
+  // ─── #3815: checked-bullet ROADMAP format ─────────────────────────────
+
+  const BULLET_ONLY_ROADMAP = `# Roadmap
+
+## Current Milestone: v2.0 Agent Skills
+
+- [x] **Phase 01: bootstrap** — completed 2026-04-01
+- [ ] **Phase 02: core-loop**
+- [ ] **Phase 03: persistence**
+
+---
+*Last updated: 2026-05-01*
+`;
+
+  it('#3815: inserts decimal phase between bullets in a checked-bullet ROADMAP', async () => {
+    const { phaseInsert } = await import('./phase-lifecycle.js');
+    await setupTestProject(tmpDir, {
+      roadmap: BULLET_ONLY_ROADMAP,
+      phases: ['01-bootstrap', '02-core-loop', '03-persistence'],
+    });
+
+    const result = await phaseInsert(['02', 'hot patch'], tmpDir);
+    const data = result.data as Record<string, unknown>;
+
+    expect(data.phase_number).toBe('02.1');
+    expect(data.after_phase).toBe('02');
+    expect(data.name).toBe('hot patch');
+
+    const roadmap = await readFile(join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+
+    // New bullet must be present
+    expect(roadmap).toMatch(/- \[ \].*Phase 02\.1:.*hot patch/i);
+
+    // New bullet must appear AFTER the Phase 02 bullet
+    const phase02Idx = roadmap.indexOf('Phase 02: core-loop');
+    const insertedIdx = roadmap.search(/Phase 02\.1:/i);
+    expect(phase02Idx).toBeGreaterThanOrEqual(0);
+    expect(insertedIdx).toBeGreaterThan(phase02Idx);
+
+    // New bullet must appear BEFORE the Phase 03 bullet (positional assertion)
+    const phase03Idx = roadmap.indexOf('Phase 03: persistence');
+    expect(insertedIdx).toBeLessThan(phase03Idx);
+
+    // Must NOT corrupt the surrounding bullet structure
+    expect(roadmap).toContain('- [x] **Phase 01: bootstrap**');
+    expect(roadmap).toContain('- [ ] **Phase 02: core-loop**');
+    expect(roadmap).toContain('- [ ] **Phase 03: persistence**');
+  });
+
+  it('#3815: inserts at end of bullet list when target is the last phase', async () => {
+    const { phaseInsert } = await import('./phase-lifecycle.js');
+    await setupTestProject(tmpDir, {
+      roadmap: BULLET_ONLY_ROADMAP,
+      phases: ['01-bootstrap', '02-core-loop', '03-persistence'],
+    });
+
+    const result = await phaseInsert(['03', 'final extra'], tmpDir);
+    const data = result.data as Record<string, unknown>;
+
+    expect(data.phase_number).toBe('03.1');
+
+    const roadmap = await readFile(join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    expect(roadmap).toMatch(/- \[ \].*Phase 03\.1:.*final extra/i);
+
+    // Must appear after Phase 03 bullet
+    const phase03Idx = roadmap.indexOf('Phase 03: persistence');
+    const insertedIdx = roadmap.search(/Phase 03\.1:/i);
+    expect(insertedIdx).toBeGreaterThan(phase03Idx);
+  });
+
+  it('#3815: plain bullet format (no bold) also works', async () => {
+    const { phaseInsert } = await import('./phase-lifecycle.js');
+    const PLAIN_BULLET_ROADMAP = `# Roadmap
+
+## Current Milestone: v2.0
+
+- [ ] Phase 01: foo
+- [ ] Phase 02: bar
+- [ ] Phase 03: baz
+
+---
+*Last updated: 2026-05-01*
+`;
+    await setupTestProject(tmpDir, {
+      roadmap: PLAIN_BULLET_ROADMAP,
+      phases: ['01-foo', '02-bar', '03-baz'],
+    });
+
+    const result = await phaseInsert(['02', 'inserted'], tmpDir);
+    const data = result.data as Record<string, unknown>;
+
+    expect(data.phase_number).toBe('02.1');
+
+    const roadmap = await readFile(join(tmpDir, '.planning', 'ROADMAP.md'), 'utf-8');
+    expect(roadmap).toMatch(/- \[ \].*Phase 02\.1:.*inserted/i);
+
+    const phase02Idx = roadmap.indexOf('Phase 02: bar');
+    const insertedIdx = roadmap.search(/Phase 02\.1:/i);
+    const phase03Idx = roadmap.indexOf('Phase 03: baz');
+    expect(insertedIdx).toBeGreaterThan(phase02Idx);
+    expect(insertedIdx).toBeLessThan(phase03Idx);
   });
 });
 
@@ -1599,6 +1815,11 @@ describe('milestoneComplete help-flag defense', () => {
 // ─── Registry integration ──────────────────────────────────────────────────
 
 describe('lifecycle handlers in registry', () => {
+  // Registry assembly (invariant checks + large handler map) routinely takes
+  // 5–10 s on a cold ESM module cache.  The second test below reuses the
+  // cached import and completes instantly, but the first import is the cold
+  // path.  Raise the per-test timeout so the warm-up doesn't surface as a
+  // spurious "Test timed out" failure (pre-existing: STACK_TRACE_ERROR mask).
   it('registers all 7 lifecycle handlers with dot notation', async () => {
     const { createRegistry } = await import('./index.js');
     const registry = createRegistry();
@@ -1612,7 +1833,7 @@ describe('lifecycle handlers in registry', () => {
       const handler = registry.getHandler(cmd);
       expect(handler, `${cmd} should be registered`).toBeDefined();
     }
-  });
+  }, 30_000);
 
   it('registers space-delimited aliases', async () => {
     const { createRegistry } = await import('./index.js');
@@ -1746,5 +1967,134 @@ describe('collectDecimalSuffixesFromDirNames — CR-3267 finding 3: alphanumeric
     const result = collectDecimalSuffixesFromDirNames('3', dirs);
     expect(result.has(1)).toBe(true);
     expect(result.has(2)).toBe(true);
+  });
+});
+
+// ─── #3 defect-1: milestone.complete header duplication ───────────────────
+//
+// Historical evidence: `## v1.8.0 Quick Mode (Shipped: 2026-01-19)`
+// Canonical template: `## ${version}${nameOpt ? ` ${nameOpt}` : ''} (Shipped: ${today})`
+// GFM § ATX headings: https://github.github.com/gfm/#atx-headings
+
+describe('milestoneComplete (#3 defect-1): header version/name rendering', () => {
+  it('no --name: header is "## v1.0 (Shipped: <date>)" — version appears exactly once', async () => {
+    const { milestoneComplete } = await import('./phase-lifecycle.js');
+    const today = new Date().toISOString().split('T')[0]!;
+    const roadmap = `# Roadmap\n\n## Current Milestone: v1.0\n\n### Phase 1: Foundation\n\n**Goal:** TBD\n**Plans:** 1 plan\n\nPlans:\n- [ ] 01-01\n`;
+    const state = `---\ngsd_state_version: 1.0\nmilestone: v1.0\nstatus: executing\n---\n\n# Project State\n\n## Current Position\n\nPhase: 1\nStatus: Executing\n`;
+    await setupTestProject(tmpDir, { roadmap, state });
+    const milestonesPath = join(tmpDir, '.planning', 'MILESTONES.md');
+    await writeFile(milestonesPath, '# Milestones\n\n', 'utf-8');
+    await mkdir(join(tmpDir, '.planning', 'phases', '01-foundation'), { recursive: true });
+
+    await milestoneComplete(['v1.0'], tmpDir);
+
+    const content = await readFile(milestonesPath, 'utf-8');
+    // Must match exactly "## v1.0 (Shipped: <date>)" — version must NOT be doubled
+    expect(content).toContain(`## v1.0 (Shipped: ${today})`);
+    expect(content).not.toMatch(/## v1\.0 v1\.0/);
+  });
+
+  it('with --name "Foundation Release": header is "## v1.0 Foundation Release (Shipped: <date>)"', async () => {
+    const { milestoneComplete } = await import('./phase-lifecycle.js');
+    const today = new Date().toISOString().split('T')[0]!;
+    const roadmap = `# Roadmap\n\n## Current Milestone: v1.0\n\n### Phase 1: Foundation\n\n**Goal:** TBD\n**Plans:** 1 plan\n\nPlans:\n- [ ] 01-01\n`;
+    const state = `---\ngsd_state_version: 1.0\nmilestone: v1.0\nstatus: executing\n---\n\n# Project State\n\n## Current Position\n\nPhase: 1\nStatus: Executing\n`;
+    await setupTestProject(tmpDir, { roadmap, state });
+    const milestonesPath = join(tmpDir, '.planning', 'MILESTONES.md');
+    await writeFile(milestonesPath, '# Milestones\n\n', 'utf-8');
+    await mkdir(join(tmpDir, '.planning', 'phases', '01-foundation'), { recursive: true });
+
+    await milestoneComplete(['v1.0', '--name', 'Foundation', 'Release'], tmpDir);
+
+    const content = await readFile(milestonesPath, 'utf-8');
+    // version + name appended: "## v1.0 Foundation Release (Shipped: ...)"
+    expect(content).toContain(`## v1.0 Foundation Release (Shipped: ${today})`);
+    expect(content).not.toMatch(/## v1\.0 v1\.0/);
+  });
+});
+
+// ─── #3 defect-2: bullet-declared phases leak phase 99 into milestone ─────
+//
+// ROADMAP declares phases via checkbox bullets ONLY (GFM task list items:
+// https://github.github.com/gfm/#task-list-items-extension-).
+// When there are no `### Phase N:` headings in the milestone section,
+// getMilestonePhaseFilter falls back to passAll (milestonePhaseNums.size === 0),
+// admitting unrelated phase dirs like 99-unrelated.
+// The fix: extend the phase-extraction regex to also match checkbox-bullet
+// declarations so passAll is not triggered spuriously.
+
+describe('milestoneComplete (#3 defect-2): checkbox-bullet phase declarations filter correctly', () => {
+  it('collects only phases 1 and 2 from bullet-only declarations — never phase 99', async () => {
+    const { milestoneComplete } = await import('./phase-lifecycle.js');
+    // Roadmap declares phases via GFM task-list bullets ONLY — no ### Phase N:
+    // headings exist anywhere in the document. This is the exact shape that
+    // triggers passAll in the current code (milestonePhaseNums.size === 0).
+    const roadmap = `# Roadmap
+
+## Current Milestone: v1.0 Foundation
+
+- [ ] **Phase 1: Foundation**
+- [ ] **Phase 2: API**
+
+---
+*Last updated: 2026-01-01*
+`;
+    const state = `---\ngsd_state_version: 1.0\nmilestone: v1.0\nstatus: executing\n---\n\n# Project State\n\n## Current Position\n\nPhase: 1\nStatus: Executing\n`;
+    await setupTestProject(tmpDir, { roadmap, state });
+
+    const phasesDir = join(tmpDir, '.planning', 'phases');
+    await mkdir(join(phasesDir, '01-foundation'), { recursive: true });
+    await mkdir(join(phasesDir, '02-api'), { recursive: true });
+    await mkdir(join(phasesDir, '99-unrelated'), { recursive: true });
+
+    const summaryContent = `# Phase Summary\n\n**Shipped the feature.**\n`;
+    await writeFile(join(phasesDir, '01-foundation', 'SUMMARY.md'), summaryContent, 'utf-8');
+    await writeFile(join(phasesDir, '02-api', 'SUMMARY.md'), summaryContent, 'utf-8');
+    // Phase 99 has a summary too — should NOT appear in accomplishments
+    await writeFile(join(phasesDir, '99-unrelated', 'SUMMARY.md'), '# Phase Summary\n\n**Should NOT appear.**\n', 'utf-8');
+
+    const milestonesPath = join(tmpDir, '.planning', 'MILESTONES.md');
+    await writeFile(milestonesPath, '# Milestones\n\n', 'utf-8');
+
+    const result = await milestoneComplete(['v1.0'], tmpDir);
+    const data = result.data as Record<string, unknown>;
+    const accomplishments = data.accomplishments as string[];
+
+    // phases 1 and 2 should be counted, 99 must be excluded
+    expect(data.phases).toBe(2);
+    expect(accomplishments.some(a => a.includes('Should NOT appear'))).toBe(false);
+  });
+});
+
+// ─── #3 defect-3: extractOneLinerFromBody section-scope leak ──────────────
+//
+// extractOneLinerFromBody must be bounded to the content between the first
+// heading and the next heading of ANY level (GFM § ATX headings:
+// https://github.github.com/gfm/#atx-headings).
+// A bold match inside a subsequent subsection (e.g. "### Deviation 1 — bar")
+// must NOT be returned.
+
+describe('extractOneLinerFromBody (#3 defect-3): bounded to first heading section', () => {
+  it('returns the real one-liner and NOT the bold inside a following sub-heading', async () => {
+    const { extractOneLinerFromBody } = await import('./phase-lifecycle-policy.js');
+    const body = [
+      '# Phase Summary',
+      '',
+      '> This is a blockquote intro — not a one-liner.',
+      '',
+      '**Real one-liner: shipped the foo system.**',
+      '',
+      'Some prose.',
+      '',
+      '### Deviation 1 — bar',
+      '',
+      '**This bold should NOT be picked up.**',
+      '',
+    ].join('\n');
+
+    const result = extractOneLinerFromBody(body);
+    expect(result).toBe('Real one-liner: shipped the foo system.');
+    expect(result).not.toContain('should NOT be picked up');
   });
 });

@@ -18,7 +18,7 @@ name: Hotfix Release
 #   - install-smoke gate (cross-platform, parity with release.yml/release-sdk.yml)
 #   - Bundles SDK as both loose tree (sdk/dist/cli.js) and recoverable tarball
 #     (sdk-bundle/gsd-sdk.tgz) — parity with release-sdk.yml so a hotfix shipped
-#     during the @gsd-build-token outage carries the same payload shape.
+#     during the @open-gsd-token outage carries the same payload shape.
 #   - Publishes to @latest, tags vX.YY.Z, re-points @next → vX.YY.Z, opens
 #     merge-back PR.
 
@@ -306,9 +306,9 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          EXISTING=$(npm view get-shit-done-cc@"$VERSION" version 2>/dev/null || true)
+          EXISTING=$(npm view get-shit-done-redux@"$VERSION" version 2>/dev/null || true)
           if [ -n "$EXISTING" ]; then
-            echo "::warning::get-shit-done-cc@${VERSION} is already on the registry — entering reconciliation mode (skip publish, continue with tag/release/PR/dist-tag)."
+            echo "::warning::get-shit-done-redux@${VERSION} is already on the registry — entering reconciliation mode (skip publish, continue with tag/release/PR/dist-tag)."
             echo "skip_publish=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip_publish=false" >> "$GITHUB_OUTPUT"
@@ -332,7 +332,7 @@ jobs:
           set -e
           cd sdk
           npm pack
-          TARBALL="gsd-build-sdk-${VERSION}.tgz"
+          TARBALL="open-gsd-sdk-${VERSION}.tgz"
           if [ ! -f "$TARBALL" ]; then
             echo "::error::Expected $TARBALL but npm pack did not produce it."
             ls -la
@@ -376,7 +376,7 @@ jobs:
 
       - name: Dry-run publish validation
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GETSHITDONEREDUXNPMTOKEN }}
         run: npm publish --dry-run --tag latest
 
       - name: Tag and push
@@ -400,16 +400,16 @@ jobs:
       - name: Publish to npm (latest)
         if: ${{ !inputs.dry_run && steps.prior_publish.outputs.skip_publish != 'true' }}
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GETSHITDONEREDUXNPMTOKEN }}
         run: npm publish --provenance --access public --tag latest
 
       - name: Re-point next dist-tag at this hotfix
         if: ${{ !inputs.dry_run }}
         env:
           VERSION: ${{ inputs.version }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GETSHITDONEREDUXNPMTOKEN }}
         run: |
-          npm dist-tag add "get-shit-done-cc@${VERSION}" next
+          npm dist-tag add "get-shit-done-redux@${VERSION}" next
           echo "✅ next dist-tag re-pointed to v${VERSION} (matches latest)"
 
       - name: Create GitHub Release (idempotent)
@@ -455,7 +455,7 @@ jobs:
         run: |
           PUBLISHED="NOT_FOUND"
           for delay in 5 10 20 30 45; do
-            PUBLISHED=$(npm view get-shit-done-cc@"$VERSION" version 2>/dev/null || echo "NOT_FOUND")
+            PUBLISHED=$(npm view get-shit-done-redux@"$VERSION" version 2>/dev/null || echo "NOT_FOUND")
             if [ "$PUBLISHED" = "$VERSION" ]; then
               break
             fi
@@ -466,12 +466,12 @@ jobs:
             echo "::error::Version $VERSION did not appear on the registry within timeout"
             exit 1
           fi
-          LATEST_VER=$(npm view get-shit-done-cc dist-tags.latest 2>/dev/null || echo "NOT_FOUND")
+          LATEST_VER=$(npm view get-shit-done-redux dist-tags.latest 2>/dev/null || echo "NOT_FOUND")
           if [ "$LATEST_VER" != "$VERSION" ]; then
             echo "::error::dist-tag 'latest' resolves to '$LATEST_VER', expected '$VERSION'"
             exit 1
           fi
-          echo "✓ Verified: get-shit-done-cc@$VERSION is live on @latest"
+          echo "✓ Verified: get-shit-done-redux@$VERSION is live on @latest"
 
       - name: Summary
         env:

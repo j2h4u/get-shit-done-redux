@@ -62,10 +62,18 @@ function runGsdTools(args, cwd = process.cwd(), env = {}) {
     }
     return { success: true, output: result.trim(), exitCode: 0 };
   } catch (err) {
+    const stderrRaw = err.stderr?.toString().trim() || '';
+    // Prefer actual stderr content; fall back to err.message (which contains
+    // the command invocation). If stderr is empty, append a note so CI logs
+    // show "stderr: (empty)" rather than silently losing the fact that the
+    // child process produced no error output — empty stderr with a non-zero
+    // exit code is a signal of OS-level crash (OOM kill, worker thread fatal
+    // error) rather than a gsd-tools application error.
+    const error = stderrRaw || `${err.message} [stderr: (empty) exit:${err.status ?? 1}]`;
     return {
       success: false,
       output: err.stdout?.toString().trim() || '',
-      error: err.stderr?.toString().trim() || err.message,
+      error,
       exitCode: err.status ?? 1,
     };
   }
@@ -184,6 +192,22 @@ function isUsageOutput(text) {
 }
 
 /**
+ * Isolated HOME directory used by runNpm() for the lifetime of this process.
+ *
+ * npm reads $HOME/.npmrc (user config) and writes to $HOME/.npm (default cache)
+ * when these paths are not overridden. On Docker hosts the running user's HOME
+ * may be uninitialized, unwritable, or contain stale state from a prior run —
+ * any of which causes `npm pack` / `npm install -g` to fail. Fix: create a
+ * fresh temp directory once per process, redirect HOME + cache + userconfig into
+ * it, and clean up on process exit. This makes runNpm() independent of the
+ * caller's environment. (#131)
+ */
+const _npmIsolatedHome = fs.mkdtempSync(path.join(require('os').tmpdir(), 'npm-home-'));
+process.on('exit', () => {
+  try { fs.rmSync(_npmIsolatedHome, { recursive: true, force: true }); } catch (_) { /* best-effort */ }
+});
+
+/**
  * Run `fn` with console.log/warn/error captured, returning {stdout, stderr}
  * with ANSI colors stripped. Re-throws any exception fn threw AFTER restoring
  * the real console so the caller's assertion path sees the failure (without
@@ -248,12 +272,47 @@ function toPosixPath(p) {
 function runNpm(args, options = {}) {
   const isWindows = process.platform === 'win32';
   const npmCmd = isWindows ? 'npm.cmd' : 'npm';
+  // Inject an isolated HOME so npm never reads from or writes to the caller's
+  // $HOME. This prevents failures on Docker hosts where HOME is unwritable or
+  // uninitialized. The caller may still pass { env: {...} } in options to
+  // further override specific variables — those overrides win because they are
+  // applied after the isolated env below (via the spread in the merge). (#131)
+  const isolatedEnv = {
+    ...process.env,
+    HOME: _npmIsolatedHome,
+    npm_config_cache: path.join(_npmIsolatedHome, '.npm'),
+    npm_config_userconfig: path.join(_npmIsolatedHome, '.npmrc'),
+  };
   const defaults = {
     encoding: 'utf-8',
     shell: isWindows,
     timeout: 180000,
+    env: isolatedEnv,
   };
-  return execFileSync(npmCmd, args, { ...defaults, ...options }).trim();
+  // Merge options; if caller passes their own env, merge it on top of isolatedEnv
+  // so the isolation is preserved unless the caller explicitly overrides HOME.
+  const { env: callerEnv, ...otherOptions } = options;
+  const mergedEnv = callerEnv ? { ...isolatedEnv, ...callerEnv } : isolatedEnv;
+  return execFileSync(npmCmd, args, { ...defaults, ...otherOptions, env: mergedEnv }).trim();
 }
 
-module.exports = { runGsdTools, createTempDir, createTempProject, createTempGitProject, cleanup, parseFrontmatter, isUsageOutput, captureConsole, toPosixPath, runNpm, TOOLS_PATH };
+/**
+ * Returns the isolated npm environment dict used by runNpm().
+ *
+ * Callers (e.g. runSmoke()) can spread this into a spawnSync env so that npm
+ * never reads from or writes to the caller's $HOME — the same guarantee
+ * runNpm() already provides. (#131)
+ *
+ * @returns {object} env dict with HOME, npm_config_cache, npm_config_userconfig
+ *   pointing into a process-scoped temp directory.
+ */
+function isolatedNpmEnv() {
+  return {
+    ...process.env,
+    HOME: _npmIsolatedHome,
+    npm_config_cache: path.join(_npmIsolatedHome, '.npm'),
+    npm_config_userconfig: path.join(_npmIsolatedHome, '.npmrc'),
+  };
+}
+
+module.exports = { runGsdTools, createTempDir, createTempProject, createTempGitProject, cleanup, parseFrontmatter, isUsageOutput, captureConsole, toPosixPath, runNpm, isolatedNpmEnv, TOOLS_PATH };

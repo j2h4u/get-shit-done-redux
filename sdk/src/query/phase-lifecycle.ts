@@ -69,6 +69,83 @@ import {
 
 export { readModifyWriteRoadmapMd, replaceInCurrentMilestone };
 
+// ─── Milestone-scoped directory helpers (#3816) ───────────────────────────
+
+/**
+ * Read the current milestone identifier from STATE.md.
+ * Returns null on any error (absent, unreadable, or no `milestone:` field).
+ */
+async function readCurrentMilestoneFromState(
+  projectDir: string,
+  workstream?: string,
+): Promise<string | null> {
+  try {
+    const statePath = planningPaths(projectDir, workstream).state;
+    const content = await readFile(statePath, 'utf-8');
+    const m = content.match(/^milestone:\s*(.+)$/m);
+    if (!m) return null;
+    return m[1].trim().replace(/^["']|["']$/g, '');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve the phases directory for a `phase.add` / `phase.add-batch` write.
+ *
+ * When the project uses a milestone-scoped layout (`.planning/milestones/
+ * <milestone>-phases/` already exists on disk), return that path so newly
+ * created phase directories land in the correct location alongside existing
+ * phases (#3816 fix for Symptom 3a).
+ *
+ * Falls back to the flat `.planning/phases/` path for all other projects.
+ */
+async function resolveWritePhasesDir(
+  projectDir: string,
+  workstream?: string,
+): Promise<string> {
+  const flatPhasesDir = planningPaths(projectDir, workstream).phases;
+  try {
+    const milestone = await readCurrentMilestoneFromState(projectDir, workstream);
+    if (!milestone) return flatPhasesDir;
+    const milestoneScopedDir = join(projectDir, '.planning', 'milestones', `${milestone}-phases`);
+    if (existsSync(milestoneScopedDir)) {
+      return milestoneScopedDir;
+    }
+  } catch { /* fall through to flat layout */ }
+  return flatPhasesDir;
+}
+
+/**
+ * Find the insertion point for a new phase entry in the ROADMAP.md content.
+ *
+ * #3816 fix for Symptom 3b: the previous implementation used
+ * `lastIndexOf('\n---')` which would place a new phase AFTER the Backlog
+ * section when Backlog precedes the trailing `---`. The new implementation
+ * inserts at the end of the active milestone section (just before the next
+ * `## Backlog` / `## Planned` / etc. heading, or before the trailing `---`).
+ *
+ * Returns the index at which the new phase entry should be inserted.
+ */
+function findPhaseInsertionPoint(rawContent: string): number {
+  // Look for the next top-level (## or ###) section that marks the end of the
+  // active phases list: Backlog, Planned milestones, or similar.
+  // Matches lines starting with ## or ### that are NOT the trailing `---`.
+  // We insert BEFORE this heading.
+  const backlogBoundaryRe = /\n(#{2,3}\s+(?:Backlog|Planned|Shipped|Archived)\b[^\n]*)/i;
+  const boundaryMatch = rawContent.match(backlogBoundaryRe);
+  if (boundaryMatch && boundaryMatch.index !== undefined) {
+    return boundaryMatch.index;
+  }
+
+  // Fallback: insert before the last `\n---` separator (original behaviour for
+  // ROADMAPs without a Backlog section).
+  const lastSeparator = rawContent.lastIndexOf('\n---');
+  if (lastSeparator > 0) return lastSeparator;
+
+  return rawContent.length;
+}
+
 // ─── phaseAdd handler ───────────────────────────────────────────────────
 
 /**
@@ -151,7 +228,8 @@ export const phaseAdd: QueryHandler = async (args, projectDir, workstream) => {
   // there is no race condition to guard against).
   const computePhaseFields = async (rawRoadmapContent: string) => {
     const milestoneContent = await extractCurrentMilestone(rawRoadmapContent, projectDir);
-    const phasesDir = planningPaths(projectDir, workstream).phases;
+    // #3816: use milestone-scoped directory if it exists, otherwise flat layout
+    const phasesDir = await resolveWritePhasesDir(projectDir, workstream);
     const dirNames = await listDirectories(phasesDir);
 
     const nextSequentialPhaseId = computeNextSequentialPhaseId(milestoneContent, dirNames);
@@ -201,17 +279,16 @@ export const phaseAdd: QueryHandler = async (args, projectDir, workstream) => {
       dirName = resolvedDirName;
       computedPhaseEntry = resolvedEntry;
 
-      const dirPath = join(planningPaths(projectDir, workstream).phases, dirName);
+      // #3816: resolve to milestone-scoped dir if it exists
+      const phasesWriteDir = await resolveWritePhasesDir(projectDir, workstream);
+      const dirPath = join(phasesWriteDir, dirName);
 
       // Create directory with .gitkeep so git tracks empty folders
       await ensureDirectoryWithGitkeep(dirPath);
 
-      // Find insertion point: before last "---" or at end
-      const lastSeparator = roadmapRaw.lastIndexOf('\n---');
-      if (lastSeparator > 0) {
-        return roadmapRaw.slice(0, lastSeparator) + computedPhaseEntry + roadmapRaw.slice(lastSeparator);
-      }
-      return roadmapRaw + computedPhaseEntry;
+      // #3816: insert before Backlog/Planned boundary, not after last `---`
+      const insertIdx = findPhaseInsertionPoint(roadmapRaw);
+      return roadmapRaw.slice(0, insertIdx) + computedPhaseEntry + roadmapRaw.slice(insertIdx);
     }, workstream);
   }
 
@@ -220,7 +297,8 @@ export const phaseAdd: QueryHandler = async (args, projectDir, workstream) => {
     padded: typeof newPhaseId === 'number' ? String(newPhaseId).padStart(2, '0') : String(newPhaseId),
     name: description,
     slug,
-    directory: toPosixPath(relative(projectDir, join(planningPaths(projectDir, workstream).phases, dirName))),
+    // #3816: result.directory must reflect the actual write location
+    directory: toPosixPath(relative(projectDir, join(await resolveWritePhasesDir(projectDir, workstream), dirName))),
     naming_mode: config.phase_naming || 'sequential',
   };
 
@@ -307,9 +385,11 @@ export const phaseAddBatch: QueryHandler = async (args, projectDir, workstream) 
     const content = await extractCurrentMilestone(rawContent, projectDir);
     let maxPhase = 0;
 
+    // #3816: resolve to milestone-scoped dir if it exists for the whole batch
+    const phasesWriteDir = await resolveWritePhasesDir(projectDir, workstream);
+
     if (config.phase_naming !== 'custom') {
-      const phasesOnDisk = planningPaths(projectDir, workstream).phases;
-      const dirNames = await listDirectories(phasesOnDisk);
+      const dirNames = await listDirectories(phasesWriteDir);
       maxPhase = computeNextSequentialPhaseId(content, dirNames) - 1;
     }
 
@@ -329,24 +409,24 @@ export const phaseAddBatch: QueryHandler = async (args, projectDir, workstream) 
       }
 
       assertSafePhaseDirName(dirName);
-      const dirPath = join(planningPaths(projectDir, workstream).phases, dirName);
+      // #3816: use resolved milestone-scoped dir for directory creation
+      const dirPath = join(phasesWriteDir, dirName);
       await ensureDirectoryWithGitkeep(dirPath);
 
       const phaseEntry =
         buildPhaseRoadmapEntry(newPhaseId, description, config.phase_naming);
 
-      const lastSeparator = rawContent.lastIndexOf('\n---');
-      rawContent =
-        lastSeparator > 0
-          ? rawContent.slice(0, lastSeparator) + phaseEntry + rawContent.slice(lastSeparator)
-          : rawContent + phaseEntry;
+      // #3816: insert before Backlog/Planned boundary, not after last `---`
+      const insertIdx = findPhaseInsertionPoint(rawContent);
+      rawContent = rawContent.slice(0, insertIdx) + phaseEntry + rawContent.slice(insertIdx);
 
       added.push({
         phase_number: typeof newPhaseId === 'number' ? newPhaseId : String(newPhaseId),
         padded: typeof newPhaseId === 'number' ? String(newPhaseId).padStart(2, '0') : String(newPhaseId),
         name: description,
         slug,
-        directory: toPosixPath(relative(projectDir, join(planningPaths(projectDir, workstream).phases, dirName))),
+        // #3816: result.directory reflects the actual write location
+        directory: toPosixPath(relative(projectDir, join(phasesWriteDir, dirName))),
         naming_mode: config.phase_naming || 'sequential',
       });
     }
@@ -409,12 +489,34 @@ export const phaseInsert: QueryHandler = async (args, projectDir, workstream) =>
     const unpadded = normalizedAfter.replace(/^0+/, '');
     const afterPhaseEscaped = unpadded.replace(/\./g, '\\.');
     const targetPattern = new RegExp(`#{2,4}\\s*Phase\\s+0*${afterPhaseEscaped}:`, 'i');
-    if (!targetPattern.test(content)) {
-      // Bug #3098 parity: when only the summary checklist exists for this
-      // phase (no `### Phase N:` detail section), point the user at the
-      // missing detail section rather than implying the phase is absent.
+    const headingMatch = targetPattern.test(content);
+
+    // #3815: also recognise the checked-bullet phase format used by projects
+    // that list phases as `- [ ] **Phase N: name**` or `- [ ] Phase N: name`
+    // (both bold and plain variants).  This mirrors the patterns already used
+    // by phaseRemove / phaseComplete so insert is consistent with its siblings.
+    //
+    // Bullet-style is only used when there are NO heading-style phases at all in
+    // the milestone content.  If the ROADMAP mixes headings + bullets (hybrid
+    // format), a bullet-only match means the detail section is missing — that
+    // is the #3098 case and must continue to produce the "missing a detail
+    // section" error.  Only a purely bullet-style ROADMAP (zero heading-style
+    // phase entries in the milestone) goes through the bullet insert path.
+    const bulletPattern = new RegExp(
+      `-\\s*\\[[ x]\\]\\s*(?:\\*\\*)?Phase\\s+0*${afterPhaseEscaped}[:\\s]`,
+      'i',
+    );
+    const anyHeadingPattern = /#{2,4}\s*Phase\s+\d/i;
+    const roadmapHasHeadingPhases = anyHeadingPattern.test(content);
+    const isBulletStyle = !headingMatch && bulletPattern.test(content) && !roadmapHasHeadingPhases;
+
+    if (!headingMatch && !isBulletStyle) {
+      // Bug #3098 parity: when the ROADMAP uses heading-style phases and only
+      // the summary checklist exists for this phase (no `### Phase N:` detail
+      // section), point the user at the missing detail section rather than
+      // implying the phase is absent.
       const checklistPattern = new RegExp(
-        `-\\s*\\[[ x]\\]\\s*\\*\\*Phase\\s+0*${afterPhaseEscaped}:`,
+        `-\\s*\\[[ x]\\]\\s*(?:\\*\\*)?Phase\\s+0*${afterPhaseEscaped}[:\\s]`,
         'i',
       );
       if (checklistPattern.test(content)) {
@@ -459,6 +561,46 @@ export const phaseInsert: QueryHandler = async (args, projectDir, workstream) =>
     // Create directory with .gitkeep
     await ensureDirectoryWithGitkeep(dirPath);
 
+    if (isBulletStyle) {
+      // #3815: Insert in checked-bullet format, mirroring the style of the
+      // surrounding entries.  Detect whether the matched bullet uses bold
+      // (`**Phase N: …**`) to preserve file-internal format consistency.
+      const boldBulletPattern = new RegExp(
+        `-\\s*\\[[ x]\\]\\s*\\*\\*Phase\\s+0*${afterPhaseEscaped}:`,
+        'i',
+      );
+      const useBold = boldBulletPattern.test(content);
+      const phaseLabel = useBold
+        ? `**Phase ${decimalPhase}: ${description}**`
+        : `Phase ${decimalPhase}: ${description}`;
+      const bulletEntry = `\n- [ ] ${phaseLabel}`;
+
+      // Locate the target bullet line in the raw content
+      const targetBulletPattern = new RegExp(
+        `(-\\s*\\[[ x]\\]\\s*(?:\\*\\*)?Phase\\s+0*${afterPhaseEscaped}[:\\s][^\\n]*)`,
+        'i',
+      );
+      const bulletMatchResult = rawContent.match(targetBulletPattern);
+      if (!bulletMatchResult) {
+        throw new GSDError(`Could not find Phase ${afterPhase} bullet line`, ErrorClassification.Execution);
+      }
+
+      const bulletLineEnd = rawContent.indexOf(bulletMatchResult[0]) + bulletMatchResult[0].length;
+      // Find where the next phase bullet starts (or use end of content)
+      const afterBullet = rawContent.slice(bulletLineEnd);
+      const nextBulletMatch = afterBullet.match(/\n-\s*\[[ x]\]\s*(?:\*\*)?Phase\s+\d/i);
+
+      let insertIdx: number;
+      if (nextBulletMatch && nextBulletMatch.index !== undefined) {
+        insertIdx = bulletLineEnd + nextBulletMatch.index;
+      } else {
+        insertIdx = bulletLineEnd;
+      }
+
+      return rawContent.slice(0, insertIdx) + bulletEntry + rawContent.slice(insertIdx);
+    }
+
+    // Heading-style insert (original path)
     // Build phase entry
     const phaseEntry = `\n### Phase ${decimalPhase}: ${description} (INSERTED)\n\n**Goal:** [Urgent work - to be planned]\n**Requirements**: TBD\n**Depends on:** Phase ${afterPhase}\n**Plans:** 0 plans\n\nPlans:\n- [ ] TBD (run /gsd-plan-phase ${decimalPhase} to break down)\n`;
 
@@ -1897,7 +2039,11 @@ export const milestoneComplete: QueryHandler = async (args, projectDir, workstre
   const archiveDir = join(paths.planning, 'milestones');
   const phasesDir = paths.phases;
   const today = new Date().toISOString().split('T')[0]!;
-  const milestoneName = nameOpt || version;
+  // #3 defect-1: preserve version in header, append optional name only when
+  // explicitly provided. Historical template: `## v1.8.0 Quick Mode (Shipped: ...)`.
+  // When no --name is given, milestoneName is undefined so the header is
+  // `## ${version} (Shipped: ...)` — version appears exactly once.
+  const milestoneName = nameOpt ?? undefined;
 
   await mkdir(archiveDir, { recursive: true });
 
@@ -1953,8 +2099,10 @@ export const milestoneComplete: QueryHandler = async (args, projectDir, workstre
 
   if (existsSync(reqPath)) {
     const reqContent = await readFile(reqPath, 'utf-8');
+    // #3 defect-1: canonical header: version + optional name appended only when provided.
+    const reqTitle = milestoneName ? `${version} ${milestoneName}` : version;
     const archiveHeader =
-      `# Requirements Archive: ${version} ${milestoneName}\n\n` +
+      `# Requirements Archive: ${reqTitle}\n\n` +
       `**Archived:** ${today}\n**Status:** SHIPPED\n\n` +
       `For current requirements, see \`.planning/REQUIREMENTS.md\`.\n\n---\n\n`;
     await writeFile(join(archiveDir, `${version}-REQUIREMENTS.md`), archiveHeader + reqContent, 'utf-8');
@@ -1966,8 +2114,12 @@ export const milestoneComplete: QueryHandler = async (args, projectDir, workstre
   }
 
   const accomplishmentsList = accomplishments.map((a) => `- ${a}`).join('\n');
+  // #3 defect-1 (GFM § ATX headings: https://github.github.com/gfm/#atx-headings)
+  // Canonical template: `## ${version}${nameOpt ? ` ${nameOpt}` : ''} (Shipped: ${today})`
+  // Historical evidence: `## v1.8.0 Quick Mode (Shipped: 2026-01-19)`
+  const milestoneTitle = milestoneName ? `${version} ${milestoneName}` : version;
   const milestoneEntry =
-    `## ${version} ${milestoneName} (Shipped: ${today})\n\n` +
+    `## ${milestoneTitle} (Shipped: ${today})\n\n` +
     `**Phases completed:** ${phaseCount} phases, ${totalPlans} plans, ${totalTasks} tasks\n\n` +
     `**Key accomplishments:**\n${accomplishmentsList || '- (none recorded)'}\n\n---\n\n`;
 

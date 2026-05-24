@@ -64,6 +64,9 @@ SDK Module owning the `init.*` family of query handlers that compose atomic SDK 
 ### CJS Command Router Adapter Module
 Compatibility Adapter Module for `gsd-tools.cjs` command families. Uses generated command metadata plus small argument shapers to route to CJS handlers, rather than calling SDK Command Topology directly. Preserves CJS compatibility startup while reducing hand-written router drift. Per-family migration to call the **Sync Runtime Bridge Module**'s `executeForCjs` in-process — eliminating the remaining parallel CJS handler implementations — is the active work of #3524 Phase 5; the primitive itself ships in #3555, with each canonical command family (`state.*`, `verify.*`, `init.*`, `phase.*`, `phases.*`, `validate.*`, `roadmap.*`, `frontmatter.*`, `config.*`) routing through `executeForCjs` in its own follow-up enhancement.
 
+### Command Routing Hub
+Single dispatch seam (`get-shit-done/bin/lib/command-routing-hub.cjs`) that centralizes mode selection (sdk vs cjs), the no-throw pure-result contract, and the closed 6-value `errorKind` enum for all CJS command family router adapters. Interface: `createHub({ mode, sdkLoader, cjsRegistry, manifest }) → hub`; `hub.dispatch({ family, subcommand, args, cwd, raw }) → Result` where `Result = { ok: true, data } | { ok: false, errorKind, message, details? }` and `errorKind ∈ { UnknownCommand, InvalidArgs, HandlerRefusal, HandlerFailure, SdkLoadFailed, SdkDispatchFailed }`. Mode is fixed at construction; hub never prints, never exits, never throws. No transparent fallback: SDK crash → `SdkDispatchFailed`, not CJS retry. Adapters call `createHub`, dispatch, then translate the pure Result to `output()`/`error()` calls. Proof-of-concept migration: `phase-command-router.cjs` (#3788). ADR: `docs/adr/0012-command-routing-hub.md`.
+
 ### Query Pre-Project Config Policy Module
 Module policy that defines query-time behavior when `.planning/config.json` is absent: use built-in defaults for parity-sensitive query Interfaces, and emit parity-aligned empty model ids for pre-project model resolution surfaces.
 
@@ -92,10 +95,13 @@ Workflow contract seam covering agent worktree lifecycle orchestration rules emb
 Adapter Module owning linked-worktree root mapping and metadata-prune policy (`git worktree prune` non-destructive default) for planning/workstream callers.
 
 ### SDK Package Seam Module
-Module owning SDK-to-`get-shit-done-cc` compatibility policy: legacy asset discovery, install-layout probing, transition-only error messaging, and thin Adapter access for CJS-era assets that native SDK Modules have not replaced yet.
+Module owning SDK-to-`get-shit-done-redux` compatibility policy: legacy asset discovery, install-layout probing, transition-only error messaging, and thin Adapter access for CJS-era assets that native SDK Modules have not replaced yet.
 
 ### Runtime-Global Skills Policy Module
 Module owning runtime-aware global skills directory policy for SDK query surfaces. Resolves runtime-global skills bases/skill paths from runtime + env precedence, renders display paths for warnings/manifests, and reports unsupported runtimes with no skills directory.
+
+### Runtime Name Policy Module
+Shared CJS/SDK Module owning runtime identity normalization at runtime-selection seams. Canonicalizes alias signals from env/config (`GSD_RUNTIME`, `.planning/config.json:runtime`) to supported runtime IDs so output emitters and query runtime gates stay consistent across naming variants (for example `codex-app`/`codex-cli` -> `codex`). Sources: `get-shit-done/bin/lib/runtime-name-policy.cjs`, `sdk/src/runtime-name-policy.ts`, alias manifest `sdk/shared/runtime-aliases.manifest.json`.
 
 ### Installer Migration Authoring Guard Module
 Module owning validation for Installer Migration Module records and planned actions. It enforces migration metadata, explicit install scopes, ownership evidence for destructive/config actions, and runtime contract citations for runtime config rewrites before a migration can enter planning or apply.
@@ -190,7 +196,7 @@ Five-axis story decomposition discipline (**S**pike, **P**aths, **I**nterfaces, 
 ## Workspace seams (machine-oriented predicates)
 
 `RULESET.GH.AUTH.DEFAULT=source .envrc GITHUB_TOKEN before gh; exception=ambient allowed only when user explicitly says machine-only fallback`
-`RULESET.CODERABBIT.GUARD.OPEN_PRS=gh pr list --repo gsd-build/get-shit-done --author @me --state open; repeat near end because open PR set can change mid-run`
+`RULESET.CODERABBIT.GUARD.OPEN_PRS=gh pr list --repo open-gsd/get-shit-done-redux --author @me --state open; repeat near end because open PR set can change mid-run`
 `RULESET.CODERABBIT.GUARD.COMPLETE=required_checks_green && coderabbit_check_pass && graphQL(reviewThreads.unresolved_count)==0`
 `RULESET.CODERABBIT.GUARD.GRAPHQL=reviewThreads(first:100){nodes{id isResolved comments{nodes{author body path line originalLine url}}}}; use unresolved threads as authoritative, not badge text alone`
 `RULESET.CODERABBIT.GUARD.RERUN=after every push wait for CodeRabbit completion, then re-query unresolved threads; CodeRabbit can add new findings after earlier threads were resolved`
@@ -250,10 +256,9 @@ Five-axis story decomposition discipline (**S**pike, **P**aths, **I**nterfaces, 
 `RELEASE-NOTES.STANDARD.heading-level=## for category, ### for subgroup (area), - for bullet`
 `RELEASE-NOTES.STANDARD.bullet-shape=**Bold user-visible change** — explanation of what was broken or what's new, leading with symptom not implementation. Trailing (#NNN) PR ref.`
 `RELEASE-NOTES.STANDARD.subgroups=phase-planning-state | workstream | query-dispatch-cli | code-review | install | capture | docs | architecture | security`
-`RELEASE-NOTES.STANDARD.footer.hotfix=Install/upgrade: \`npx get-shit-done-cc@latest\``
-`RELEASE-NOTES.STANDARD.footer.rc=Install for testing: \`npx get-shit-done-cc@next\` (per branch->dist-tag policy)`
-`RELEASE-NOTES.STANDARD.footer.canary=Install: \`npx get-shit-done-cc@canary\``
-`RELEASE-NOTES.STANDARD.footer.full-changelog=**Full Changelog**: https://github.com/gsd-build/get-shit-done/compare/<prev>...<this>`
+`RELEASE-NOTES.STANDARD.footer.hotfix=Install/upgrade: \`npx @opengsd/get-shit-done-redux@latest\``
+`RELEASE-NOTES.STANDARD.footer.rc=Install for testing: \`npx @opengsd/get-shit-done-redux@next\` (per branch->dist-tag policy)`
+`RELEASE-NOTES.STANDARD.footer.full-changelog=**Full Changelog**: https://github.com/open-gsd/get-shit-done-redux/compare/<prev>...<this>`
 `RELEASE-NOTES.STANDARD.intro=optional one-paragraph framing for RC/feature releases; omit for pure-fix hotfixes`
 
 `RELEASE-NOTES.SOURCE.commits=git log <prev-tag>..<this-tag> --pretty=format:'%s%n%n%b' --no-merges`
@@ -270,16 +275,15 @@ Five-axis story decomposition discipline (**S**pike, **P**aths, **I**nterfaces, 
 `RELEASE-NOTES.ANTI-PATTERN.implementation-first=do not lead bullet with file path or function name; lead with symptom/user-visible behavior`
 `RELEASE-NOTES.ANTI-PATTERN.risk-commentary=do not include "may break", "be careful", "test thoroughly" - per global CLAUDE.md no-risk-commentary rule`
 
-`RELEASE-NOTES.EXAMPLE.hotfix=v1.41.1 (https://github.com/gsd-build/get-shit-done/releases/tag/v1.41.1) - 14 fixes grouped by 6 subgroups`
-`RELEASE-NOTES.EXAMPLE.rc=v1.42.0-rc1 (https://github.com/gsd-build/get-shit-done/releases/tag/v1.42.0-rc1) - intro + Added/Changed/Fixed/Documentation taxonomy`
+`RELEASE-NOTES.EXAMPLE.hotfix=v1.41.1 (https://github.com/open-gsd/get-shit-done-redux/releases/tag/v1.41.1) - 14 fixes grouped by 6 subgroups`
+`RELEASE-NOTES.EXAMPLE.rc=v1.42.0-rc1 (https://github.com/open-gsd/get-shit-done-redux/releases/tag/v1.42.0-rc1) - intro + Added/Changed/Fixed/Documentation taxonomy`
 `RELEASE-NOTES.EXAMPLE.minor-auto-acceptable=v1.41.0 - kept auto-generated body; many small fixes with clean conventional-commit titles`
 
-`RELEASE-NOTES.TEMPLATE.hotfix=## Fixed\n\n### <subgroup>\n- **<bold change>** — <explanation>. (#<PR>)\n\n---\n\nInstall/upgrade: \`npx get-shit-done-cc@latest\`\n\n**Full Changelog**: <compare-url>`
-`RELEASE-NOTES.TEMPLATE.rc=<one-paragraph intro>\n\n## Added\n### <subgroup>\n- **<change>** — <explanation>. (#<PR>)\n\n## Changed\n### Architecture\n- **<refactor>** — <user-visible benefit>. (#<PR>)\n\n## Fixed\n### <subgroup>\n- **<fix>** — <explanation>. (#<PR>)\n\n## Documentation\n- **<docs change>** — <reason>. (#<PR>)\n\n---\n\nThis is a release candidate. Install for testing:\n\`\`\`bash\nnpx get-shit-done-cc@next\n\`\`\`\n\n**Full Changelog**: <compare-url>`
+`RELEASE-NOTES.TEMPLATE.hotfix=## Fixed\n\n### <subgroup>\n- **<bold change>** — <explanation>. (#<PR>)\n\n---\n\nInstall/upgrade: \`npx @opengsd/get-shit-done-redux@latest\`\n\n**Full Changelog**: <compare-url>`
+`RELEASE-NOTES.TEMPLATE.rc=<one-paragraph intro>\n\n## Added\n### <subgroup>\n- **<change>** — <explanation>. (#<PR>)\n\n## Changed\n### Architecture\n- **<refactor>** — <user-visible benefit>. (#<PR>)\n\n## Fixed\n### <subgroup>\n- **<fix>** — <explanation>. (#<PR>)\n\n## Documentation\n- **<docs change>** — <reason>. (#<PR>)\n\n---\n\nThis is a release candidate. Install for testing:\n\`\`\`bash\nnpx @opengsd/get-shit-done-redux@next\n\`\`\`\n\n**Full Changelog**: <compare-url>`
 
-`RELEASE-NOTES.RELEASE-STREAM.dev-branch=canary dist-tag (only); install via @canary`
 `RELEASE-NOTES.RELEASE-STREAM.main-branch=next (RCs) + latest (stable); install via @next or @latest`
-`RELEASE-NOTES.RELEASE-STREAM.rule=streams do not mix; do not document @canary install in RC notes or @next in canary notes`
+`RELEASE-NOTES.RELEASE-STREAM.rule=streams do not mix; do not document @next in hotfix/stable notes`
 
 ---
 
@@ -550,11 +554,9 @@ Migration plan: Phase 1 (#3465) seam additions complete; Phase 2 (#3466) targets
 `DEFECT.STACKED-PR-CANNOT-STAND-ALONE.anti-pattern=blindly running git rebase --onto origin/main on the patch branch — produces "conflicts" that are really "the scaffolding doesn't exist yet"; resolving them means reinventing the upstream PR's contribution, which duplicates work and creates merge hazards. Recognize the shape early via cat-file probe before rebasing`
 
 `DEFECT.CANARY-VERSION-LEAK.symptom=package.json version on main carries a -canary.<N> suffix that per release policy belongs to the dev branch only; nothing publishable depends on the version string at runtime, but every consumer of the version metadata (release flow, install banners, statusline) sees the dev-channel label`
-`DEFECT.CANARY-VERSION-LEAK.examples=2026-05-16 audit found origin/main + origin/feat/3575-enforcement-hardening both at "version": "1.50.0-canary.0" in sdk/package.json AND root package.json; npm view @gsd-build/sdk versions returned ["0.1.0"] only, dist-tag latest=0.1.0, @1.50.0-canary.0 404 — confirms the string is metadata-only, never published. git log -S '"version": "1.50.0-canary.0"' origin/main blamed commit 2d32ad82 fix(plan-phase)... (#3206), a fix PR that accidentally carried the version bump from a dev-branch base`
+`DEFECT.CANARY-VERSION-LEAK.examples=2026-05-16 audit found origin/main + origin/feat/3575-enforcement-hardening both at "version": "1.50.0-canary.0" in sdk/package.json AND root package.json; npm view @opengsd/gsd-sdk versions returned ["0.1.0"] only, dist-tag latest=0.1.0, @1.50.0-canary.0 404 — confirms the string is metadata-only, never published. git log -S '"version": "1.50.0-canary.0"' origin/main blamed commit 2d32ad82 fix(plan-phase)... (#3206), a fix PR that accidentally carried the version bump from a dev-branch base`
 `DEFECT.CANARY-VERSION-LEAK.detect=jq -r .version package.json sdk/package.json on origin/main shows a -canary suffix; OR npm view <pkg> dist-tags shows latest != main's version`
 `DEFECT.CANARY-VERSION-LEAK.fix-forward=open a chore/* PR against main that resets the version strings to the canonical pre-canary stable; rebase open PRs to pick it up; gate at PR open with a CI check that rejects -canary versions on PRs targeting main`
-`DEFECT.CANARY-VERSION-LEAK.cross-ref=RELEASE-NOTES.RELEASE-STREAM.dev-branch=canary dist-tag (only); this defect is the live counter-example to that rule`
-
 `DEFECT.GSD-TEST-HOST-MID-RUN-DEATH.symptom=pick_host succeeds at probe time (ssh -o ConnectTimeout=3 -o BatchMode=yes "$h" true); subsequent ssh "$h" 'docker run ...' hangs indefinitely because the chosen host went unreachable between probe and exec; gsd-test-summary buffers stderr until the wrapper exits, so the operator sees no progress at all`
 `DEFECT.GSD-TEST-HOST-MID-RUN-DEATH.examples=2026-05-16 redshirt probed up at 12:48 UTC, gsd-test-summary picked it, docker container spawned, then redshirt's ssh daemon stopped responding — banner-exchange timeout. Test stalled 20+ minutes with the wrapper's output file at 0 bytes`
 `DEFECT.GSD-TEST-HOST-MID-RUN-DEATH.detect=gsd-test-summary's task output file at /private/tmp/claude-*/tasks/<id>.output stays 0 bytes for >5 min after launch; ps shows the test still alive; ssh -o ConnectTimeout=5 <probed-host> true now times out`
@@ -591,7 +593,7 @@ Migration plan: Phase 1 (#3465) seam additions complete; Phase 2 (#3466) targets
 `DEFECT.GSD-TEST-CONCURRENT-OUTPUT-COLLISION.root-cause=gsd-test-summary lines 126-127 default LOCAL_OUT/DOCKER_OUT to fixed /tmp/gsd-test-{local,docker}.jsonl; concurrent line-buffered writers interleave bytes mid-multibyte → split UTF-8 sequence → decoder explodes on f.read()`
 `DEFECT.GSD-TEST-CONCURRENT-OUTPUT-COLLISION.detect=two gsd-test-summary --both runs in flight; UnicodeDecodeError in parse_events_from_string traceback; /tmp/gsd-test-*.jsonl size mismatch vs total events emitted`
 `DEFECT.GSD-TEST-CONCURRENT-OUTPUT-COLLISION.fix-forward=set per-invocation LOCAL_OUT=/tmp/gsd-test-<tag>-local.jsonl DOCKER_OUT=/tmp/gsd-test-<tag>-docker.jsonl env vars; or serialize the runs; upstream fix tracked in #3545 (default to tempfile.mkstemp + advisory flock)`
-`DEFECT.GSD-TEST-CONCURRENT-OUTPUT-COLLISION.upstream=gsd-build/get-shit-done#3545`
+`DEFECT.GSD-TEST-CONCURRENT-OUTPUT-COLLISION.upstream=open-gsd/get-shit-done-redux#3545`
 `DEFECT.SUBAGENT-LONG-RUNNING-BG-STALL.symptom=spawned sub-agent kicks off gsd-test-summary --both via Bash run_in_background, then stops on the harness "you will be notified" message; never receives the notification because cross-turn task-notifications are only delivered to the top-level orchestrator`
 `DEFECT.SUBAGENT-LONG-RUNNING-BG-STALL.detect=sub-agent returns prematurely with text like "I should wait for the notification per CLAUDE.md" and incomplete work in its worktree (commits absent, push absent, PR absent)`
 `DEFECT.SUBAGENT-LONG-RUNNING-BG-STALL.fix-forward=keep gsd-test-summary --both at the top-level orchestrator; sub-agents either run it foreground with timeout: 1500000 (25min) and block, OR delegate the test step back to the orchestrator (write commits + return); never have a sub-agent fire-and-await a backgrounded long task`
@@ -610,3 +612,69 @@ Migration plan: Phase 1 (#3465) seam additions complete; Phase 2 (#3466) targets
 `PROC.TRIAGE.routing-incoming=stale-bug-already-fixed to close as duplicate of originating issue + cite fix PR + first stable tag; release-publish-or-backport to ready-for-human; reporter-can-self-test to awaiting-retest`
 `PROC.TRIAGE.comment-shape=lead with "duplicate of #NNNN, fixed by PR #MMMM, in v1.X.Y"; show current code snippet proving bug-surface gone; give @latest and @next upgrade commands; close`
 `PROC.TRIAGE.no-duplicate-label=this repo has no duplicate label; framing lives in comment text + closing the issue`
+
+---
+
+## PR fix discipline — patterns observed 2026-05-23
+
+Full detail in `~/.claude/skills/gsd-pr-fix-discipline/SKILL.md`. AI agents MUST check this section before pushing to `open-gsd/get-shit-done-redux`.
+
+### INVENTORY / manifest drift
+
+- **Symptom:** `inventory-counts.test.cjs` fails — `"<dir> (N shipped)" disagrees with filesystem (N+1)`
+- **Affected this session:** #154, #156, #143, #155, #169
+- **Fix:** Add row to `docs/INVENTORY.md` CLI Modules table + increment headline count + `node scripts/gen-inventory-manifest.cjs --write`
+
+### Stale sdk/dist consumed by gen scripts
+
+- **Symptom:** `gen-*.mjs` emits stale CJS; correct fixes appear to be reverted by subsequent regeneration passes
+- **Affected this session:** #154 (2nd-pass agent reverted a correct slash-form fix)
+- **Fix:** Always `npm run build:sdk &&` before `node sdk/scripts/gen-*.mjs`; PR #169 adds staleness check
+
+### Slash command two-tier confusion
+
+- **Symptom:** `tests/bug-2543-gsd-slash-namespace.test.cjs` or `tests/bug-3584-runtime-slash-emitters.test.cjs` fails
+- **Affected this session:** #154 (three passes), #164 (added the authoritative matrix)
+- **Fix:** Consult `## Slash-command form` section of this file before touching any `/gsd-` or `/gsd:` token — colon for `agents/`/`commands/`, hyphen for runtime emitters
+
+### Concurrency cancel-in-progress masking real CI state
+
+- **Symptom:** `gh pr checks` shows failures but the latest commit SHA's run was cancelled before Tests even started
+- **Affected this session:** #154, #136
+- **Fix:** `gh workflow run Tests --repo open-gsd/get-shit-done-redux --ref <branch>`; verify with `gh run list --branch <branch> --workflow Tests --limit 1 --json status,conclusion,headSha`
+
+### Missing changeset fragment
+
+- **Symptom:** `changeset-lint` fails with `fail_missing_fragment` (~5s)
+- **Affected this session:** #156, #143, #164
+- **Fix:** `node scripts/changeset/new.cjs --type <Type> --pr <N> --body "..."` or apply `no-changelog` label for doc-only PRs
+
+### Cross-platform Windows / Node 24 hazards
+
+- **Symptom:** Windows CI leg fails; Mac/Linux green — POSIX paths in `node -e`, hardcoded `.nvmrc` fixtures, 2000ms wall-clock budget flakes, `synckit` uncaught Worker exception
+- **Affected this session:** #157
+- **Fix:** Use `./package.json` not `$PWD/package.json`; write `.nvmrc` dynamically in `before()` hook; use 5000ms budget; wrap `getExecuteForCjs()` in `try/catch`
+
+### Sub-agent rubber-duck stall
+
+- **Symptom:** Sub-agent returns a question list and halts; no commits or push in the worktree
+- **Affected this session:** Multiple agents mid-session
+- **Fix:** Every sub-agent brief must include: `Skill rubber-duck is BANNED in this sub-agent. Convert to internal monologue and proceed.`
+
+### Stacked PR squash-merge breakage
+
+- **Symptom:** After base PR squash-merges, stacked PR shows conflicts or wrong diff; GitHub auto-retarget fails
+- **Affected this session:** #158 stacked on #156
+- **Fix:** `git rebase --onto main <old-base> <stacked-branch>` then force-push and `gh pr edit --base main`
+
+### `tee` pipe swallowing exit codes
+
+- **Symptom:** `gsd-test-summary --both 2>&1 | tee /tmp/log` returns `0` even when Docker reports failures
+- **Affected this session:** Session-wide risk
+- **Fix:** Run un-piped, or `set -o pipefail` before the pipe
+
+### Auto-merge disabled
+
+- **Symptom:** `gh pr merge --auto` returns `GraphQL: Auto merge is not allowed for this repository`
+- **Affected this session:** All stacked PRs
+- **Fix:** Merge manually by hand in dependency order once CI greens; `gh pr merge <N> --squash --repo open-gsd/get-shit-done-redux`
