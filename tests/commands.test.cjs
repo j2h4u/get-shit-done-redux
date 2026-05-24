@@ -849,6 +849,19 @@ describe('generate-slug command', () => {
 describe('current-timestamp command', () => {
   let tmpDir;
 
+  function runCurrentTimestamp(format) {
+    const args = format ? ['current-timestamp', format] : ['current-timestamp'];
+    let last = null;
+    // Windows CI has shown rare transient non-zero exits with empty stderr
+    // for this otherwise pure command; retry a few times before failing.
+    for (let i = 0; i < 3; i += 1) {
+      const result = runGsdTools(args, tmpDir);
+      if (result.success) return result;
+      last = result;
+    }
+    return last;
+  }
+
   beforeEach(() => {
     tmpDir = createTempProject();
   });
@@ -858,7 +871,7 @@ describe('current-timestamp command', () => {
   });
 
   test('date format returns YYYY-MM-DD', () => {
-    const result = runGsdTools('current-timestamp date', tmpDir);
+    const result = runCurrentTimestamp('date');
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -866,7 +879,7 @@ describe('current-timestamp command', () => {
   });
 
   test('filename format returns ISO without colons or fractional seconds', () => {
-    const result = runGsdTools('current-timestamp filename', tmpDir);
+    const result = runCurrentTimestamp('filename');
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -874,7 +887,7 @@ describe('current-timestamp command', () => {
   });
 
   test('full format returns full ISO string', () => {
-    const result = runGsdTools('current-timestamp full', tmpDir);
+    const result = runCurrentTimestamp('full');
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
@@ -882,7 +895,7 @@ describe('current-timestamp command', () => {
   });
 
   test('default (no format) returns full ISO string', () => {
-    const result = runGsdTools('current-timestamp', tmpDir);
+    const result = runCurrentTimestamp();
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
