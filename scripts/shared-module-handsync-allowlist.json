@@ -147,5 +147,13 @@
       "justification": "CJS prompt-budget.cjs provides the applyBudget implementation used by gsd-tools.cjs case 'prompt-budget'. SDK prompt-budget.ts is the native QueryHandler port for gsd-sdk query dispatch (#3081). The SDK handler ports the pure budget logic and adds CLI arg parsing / file I/O directly, satisfying the registry-integration drift-guard without duplicating shared state."
     }
   ],
-  "migrateMeBacklog": []
+  "migrateMeBacklog": [
+    {
+      "cjs": "get-shit-done/bin/lib/verify.cjs",
+      "ts": "sdk/src/query/validate.ts",
+      "classification": "drift-anti-pattern",
+      "justification": "Cross-name cooperating pair where validate policy changes can drift from verify checks; keep explicitly visible until Shared Module extraction removes hand-sync risk.",
+      "trackedIn": "#11"
+    }
+  ]
 }
