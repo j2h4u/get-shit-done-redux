@@ -113,8 +113,7 @@ jobs:
               const tag = release.tag_name || release.name || "release";
               const title = release.name || tag;
               const notes = formatReleaseNotes(release.body || "") || "No release notes provided.";
-              const releaseLink = release.html_url ? `\n\nRelease: ${release.html_url}` : "";
-              const fullMessage = `**${title} Released**\n\n${notes}${releaseLink}`;
+              const fullMessage = `**${title} Released**\n\n${notes}`;
 
               return splitDiscordMessage(fullMessage, 1900);
             }
@@ -269,6 +268,10 @@ jobs:
               return truncate(
                 value
                   .replace(/\r\n/g, "\n")
+                  .replace(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(\d+)/g, "#$1")
+                  .replace(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/(\d+)/g, "#$1")
+                  .replace(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/commit\/([0-9a-f]{7})[0-9a-f]*/gi, "$1")
+                  .replace(/https:\/\/github\.com\/\S+/g, "")
                   .trim()
                   .split("\n")
                   .map((line) => {
