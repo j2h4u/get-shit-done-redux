@@ -65,33 +65,35 @@ jobs:
               };
             }
 
-            const discordPayload = buildDiscordPayload(eventName, event);
-            const discordResponse = await fetch(webhookUrl, {
-              method: "POST",
-              headers: {
-                "content-type": "application/json",
-              },
-              body: JSON.stringify(discordPayload),
-            });
+            for (const discordPayload of buildDiscordPayloads(eventName, event)) {
+              const discordResponse = await fetch(webhookUrl, {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                },
+                body: JSON.stringify(discordPayload),
+              });
 
-            if (!discordResponse.ok) {
-              core.setFailed(
-                `Discord webhook failed with ${discordResponse.status}: ${await discordResponse.text()}`,
-              );
+              if (!discordResponse.ok) {
+                core.setFailed(
+                  `Discord webhook failed with ${discordResponse.status}: ${await discordResponse.text()}`,
+                );
+                return;
+              }
             }
 
-            function buildDiscordPayload(eventName, event) {
+            function buildDiscordPayloads(eventName, event) {
               if (eventName === "release") {
-                return {
+                return buildReleaseMessages(event).map((content) => ({
                   username: "Repo Changelog",
-                  content: buildReleaseContent(event),
+                  content,
                   allowed_mentions: {
                     parse: [],
                   },
-                };
+                }));
               }
 
-              return {
+              return [{
                 username: "Repo Changelog",
                 content: buildContent(eventName, event),
                 embeds: [
@@ -103,17 +105,18 @@ jobs:
                     timestamp: new Date().toISOString(),
                   },
                 ],
-              };
+              }];
             }
 
-            function buildReleaseContent(event) {
+            function buildReleaseMessages(event) {
               const release = event.release || {};
               const tag = release.tag_name || release.name || "release";
               const title = release.name || tag;
               const notes = formatReleaseNotes(release.body || "") || "No release notes provided.";
               const releaseLink = release.html_url ? `\n\nRelease: ${release.html_url}` : "";
+              const fullMessage = `**${title} Released**\n\n${notes}${releaseLink}`;
 
-              return `**${title} Released**\n\n${notes}${releaseLink}`;
+              return splitDiscordMessage(fullMessage, 1900);
             }
 
             function buildContent(eventName, event) {
@@ -276,6 +279,38 @@ jobs:
                   .replace(/\n{3,}/g, "\n\n")
                   .trim(),
                 3900,
+              );
+            }
+
+            function splitDiscordMessage(value, maxLength) {
+              if (value.length <= maxLength) {
+                return [value];
+              }
+
+              const chunks = [];
+              let remaining = value;
+
+              while (remaining.length > maxLength) {
+                let splitAt = remaining.lastIndexOf("\n", maxLength);
+
+                if (splitAt < 500) {
+                  splitAt = remaining.lastIndexOf(" ", maxLength);
+                }
+
+                if (splitAt < 500) {
+                  splitAt = maxLength;
+                }
+
+                chunks.push(remaining.slice(0, splitAt).trim());
+                remaining = remaining.slice(splitAt).trim();
+              }
+
+              if (remaining) {
+                chunks.push(remaining);
+              }
+
+              return chunks.map((chunk, index) =>
+                index === 0 ? chunk : `**Changelog continued**\n\n${chunk}`,
               );
             }
 
