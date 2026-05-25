@@ -14,14 +14,12 @@ Read project state to determine current position:
 
 ```bash
 # Get state snapshot
-# SDK resolution: prefer local gsd-tools.cjs, fall back to global gsd-sdk (#3668)
+# SDK resolution: prefer local gsd-tools.cjs, fail if local gsd-tools.cjs is missing (#3668)
 GSD_TOOLS="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/get-shit-done/bin/gsd-tools.cjs"
 if [ -f "$GSD_TOOLS" ]; then
   GSD_SDK="node $GSD_TOOLS"
-elif command -v gsd-sdk >/dev/null 2>&1; then
-  GSD_SDK="gsd-sdk"
 else
-  echo "ERROR: gsd-sdk not found on PATH and $GSD_TOOLS does not exist." >&2
+  echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS." >&2
   echo "Run: npx -y @opengsd/get-shit-done-redux@latest --claude --local" >&2
   exit 1
 fi
@@ -94,7 +92,7 @@ Use `--force` to bypass this check.
 Exit.
 
 **Prior-phase completeness scan:**
-After passing all three hard-stop gates, scan all phases that precede the current phase in ROADMAP.md order for incomplete work. For each prior phase number `N`, use `gsd-sdk query find-phase <N>` JSON (plans, summaries, incomplete_plans, etc.) to inspect that phase.
+After passing all three hard-stop gates, scan all phases that precede the current phase in ROADMAP.md order for incomplete work. For each prior phase number `N`, use `gsd-tools.cjs query find-phase <N>` JSON (plans, summaries, incomplete_plans, etc.) to inspect that phase.
 
 Detect three categories of incomplete work:
 1. **Plans without summaries** — a PLAN.md exists in a prior phase directory but no matching SUMMARY.md exists (execution started but not completed).

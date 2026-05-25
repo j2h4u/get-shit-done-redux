@@ -19,14 +19,12 @@ Read all files referenced by the invoking prompt's execution_context before star
 Bootstrap via manager init:
 
 ```bash
-# SDK resolution: prefer local gsd-tools.cjs, fall back to global gsd-sdk (#3668)
+# SDK resolution: prefer local gsd-tools.cjs, fail if local gsd-tools.cjs is missing (#3668)
 GSD_TOOLS="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/get-shit-done/bin/gsd-tools.cjs"
 if [ -f "$GSD_TOOLS" ]; then
   GSD_SDK="node $GSD_TOOLS"
-elif command -v gsd-sdk >/dev/null 2>&1; then
-  GSD_SDK="gsd-sdk"
 else
-  echo "ERROR: gsd-sdk not found on PATH and $GSD_TOOLS does not exist." >&2
+  echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS." >&2
   echo "Run: npx -y @opengsd/get-shit-done-redux@latest --claude --local" >&2
   exit 1
 fi
@@ -41,7 +39,7 @@ Parse JSON for: `milestone_version`, `milestone_name`, `phase_count`, `completed
 - `manager_flags.plan` — appended to plan agent init command
 - `manager_flags.execute` — appended to execute agent init command
 
-These are empty strings by default. Set via: `gsd-sdk query config-set manager.flags.discuss "--auto --analyze"`
+These are empty strings by default. Set via: `gsd-tools.cjs query config-set manager.flags.discuss "--auto --analyze"`
 
 **If error:** Display the error message and exit.
 

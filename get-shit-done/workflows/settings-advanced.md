@@ -20,14 +20,12 @@ Read all files referenced by the invoking prompt's execution_context before star
 Ensure config exists and resolve the workstream-aware config path (mirrors `settings.md`):
 
 ```bash
-# SDK resolution: prefer local gsd-tools.cjs, fall back to global gsd-sdk (#3668)
+# SDK resolution: prefer local gsd-tools.cjs, fail if local gsd-tools.cjs is missing (#3668)
 GSD_TOOLS="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/get-shit-done/bin/gsd-tools.cjs"
 if [ -f "$GSD_TOOLS" ]; then
   GSD_SDK="node $GSD_TOOLS"
-elif command -v gsd-sdk >/dev/null 2>&1; then
-  GSD_SDK="gsd-sdk"
 else
-  echo "ERROR: gsd-sdk not found on PATH and $GSD_TOOLS does not exist." >&2
+  echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS." >&2
   echo "Run: npx -y @opengsd/get-shit-done-redux@latest --claude --local" >&2
   exit 1
 fi
@@ -432,7 +430,7 @@ AskUserQuestion([
 
 If "Other (Group B or custom)" is selected, prompt the user to enter the runtime name as a free-text string.
 If the selected runtime differs from the stored `runtime` key, update `runtime` via
-`gsd-sdk query config-set runtime <value>` before proceeding to Step C.
+`gsd-tools.cjs query config-set runtime <value>` before proceeding to Step C.
 
 **Step C — Configure tier overrides for the selected runtime:**
 
@@ -492,7 +490,7 @@ change.
 Merge the new settings into the existing config at `$GSD_CONFIG_PATH`. This merge is the
 core correctness invariant: **preserve every unrelated key** — do not clobber siblings.
 
-Apply each selected value via `gsd-sdk query config-set <key> <value>` so the central
+Apply each selected value via `gsd-tools.cjs query config-set <key> <value>` so the central
 validator (`isValidConfigKey`) accepts the write and the deep-merge preserves unrelated
 keys and sibling sub-objects.
 
@@ -557,7 +555,7 @@ anything not listed in Sections 1–7 MUST survive the update):
 ```
 
 Never emit a full overwrite of the file that omits keys the user did not touch. Always
-route each write through `gsd-sdk query config-set` so sibling preservation is handled by
+route each write through `gsd-tools.cjs query config-set` so sibling preservation is handled by
 the central setter.
 </step>
 
@@ -612,7 +610,7 @@ UI/AI phase gates), use /gsd:settings.
 - [ ] Numeric inputs validated — non-numeric rejected and re-prompted
 - [ ] Branch-template inputs validated — non-default must contain a placeholder
 - [ ] Null-allowed fields accept an empty input as a clear
-- [ ] Writes routed through `gsd-sdk query config-set` so unrelated keys are preserved
+- [ ] Writes routed through `gsd-tools.cjs query config-set` so unrelated keys are preserved
 - [ ] Section 7 shows current runtime and built-in tier table
 - [ ] Group B runtimes display "(no built-in default — your runtime handles model selection)"
 - [ ] Override set/clear/keep paths all work correctly for each tier

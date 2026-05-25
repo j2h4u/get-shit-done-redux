@@ -12,14 +12,12 @@ Read all files referenced by the invoking prompt's execution_context before star
 Ensure config exists and load current state:
 
 ```bash
-# SDK resolution: prefer local gsd-tools.cjs, fall back to global gsd-sdk (#3668)
+# SDK resolution: prefer local gsd-tools.cjs, fail if local gsd-tools.cjs is missing (#3668)
 GSD_TOOLS="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/get-shit-done/bin/gsd-tools.cjs"
 if [ -f "$GSD_TOOLS" ]; then
   GSD_SDK="node $GSD_TOOLS"
-elif command -v gsd-sdk >/dev/null 2>&1; then
-  GSD_SDK="gsd-sdk"
 else
-  echo "ERROR: gsd-sdk not found on PATH and $GSD_TOOLS does not exist." >&2
+  echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS." >&2
   echo "Run: npx -y @opengsd/get-shit-done-redux@latest --claude --local" >&2
   exit 1
 fi
@@ -424,7 +422,7 @@ Merge new settings into existing config.json:
 }
 ```
 
-**Safe merge:** Apply each chosen value via `gsd-sdk query config-set <key.path> <value>` so unrelated keys are never clobbered. `code_review_depth` is written only if the code_review question was answered `on`; otherwise leave the existing value in place. `model_profile` is written on Q1 "Adaptive (Recommended)" (→ adaptive) or Q1 "Inherit" (→ inherit) immediately; for Q1 "Standard tier…", `model_profile` is written from Q2's answer. If Q1 = "Standard tier…" but Q2 is cancelled, leave the existing `model_profile` value unchanged — do not write any new value.
+**Safe merge:** Apply each chosen value via `gsd-tools.cjs query config-set <key.path> <value>` so unrelated keys are never clobbered. `code_review_depth` is written only if the code_review question was answered `on`; otherwise leave the existing value in place. `model_profile` is written on Q1 "Adaptive (Recommended)" (→ adaptive) or Q1 "Inherit" (→ inherit) immediately; for Q1 "Standard tier…", `model_profile` is written from Q2's answer. If Q1 = "Standard tier…" but Q2 is cancelled, leave the existing `model_profile` value unchanged — do not write any new value.
 
 Write updated config to `$GSD_CONFIG_PATH` (the workstream-aware path resolved in `ensure_and_load_config`). Never hardcode `.planning/config.json` — workstream installs route to `.planning/workstreams/<slug>/config.json`.
 </step>

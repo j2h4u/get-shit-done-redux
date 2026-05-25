@@ -66,14 +66,12 @@ If `--wave` is absent, preserve the current behavior of executing all incomplete
 Load all context in one call:
 
 ```bash
-# SDK resolution: prefer local gsd-tools.cjs, fall back to global gsd-sdk (#3668)
+# SDK resolution: prefer local gsd-tools.cjs, fail if local gsd-tools.cjs is missing (#3668)
 GSD_TOOLS="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/get-shit-done/bin/gsd-tools.cjs"
 if [ -f "$GSD_TOOLS" ]; then
   GSD_SDK="node $GSD_TOOLS"
-elif command -v gsd-sdk >/dev/null 2>&1; then
-  GSD_SDK="gsd-sdk"
 else
-  echo "ERROR: gsd-sdk not found on PATH and $GSD_TOOLS does not exist." >&2
+  echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS." >&2
   echo "Run: npx -y @opengsd/get-shit-done-redux@latest --claude --local" >&2
   exit 1
 fi
@@ -376,7 +374,7 @@ CROSS_AI_TIMEOUT=$($GSD_SDK query config-get workflow.cross_ai_timeout 2>/dev/nu
 **If no plans are marked for cross-AI:** Skip to execute_waves.
 
 **If plans are marked but `cross_ai_command` is empty:** Error — tell user to set
-`workflow.cross_ai_command` via `gsd-sdk query config-set workflow.cross_ai_command "<command>"`.
+`workflow.cross_ai_command` via `gsd-tools.cjs query config-set workflow.cross_ai_command "<command>"`.
 
 **For each cross-AI plan (sequentially):**
 
@@ -951,7 +949,7 @@ increases monotonically across waves. `{status}` is `complete` (success),
    Report failed plan and ask Continue/Stop; continuing may cascade into dependent plan failures.
 
 7b. **Pre-wave dependency check (waves 2+ only):**
-    Before wave N+1, run `gsd-sdk query verify.key-links {phase_dir}/{plan}-PLAN.md` for each upcoming plan.
+    Before wave N+1, run `gsd-tools.cjs query verify.key-links {phase_dir}/{plan}-PLAN.md` for each upcoming plan.
     If any PRIOR-wave artifact link fails, present:
     - `## Cross-Plan Wiring Gap` with plan/link/from/pattern rows
     - Options: investigate+fix before continue, or continue with cascade risk
@@ -1702,7 +1700,7 @@ For 1M+ context models, consider:
 </context_efficiency>
 
 <failure_handling>
-- **Quota / rate-limit (any runtime — #3095):** Agent return body contains a sentinel like `usage limit`, `rate limit`, `429`, `too many requests`, `RESOURCE_EXHAUSTED`, `usage_limit_reached`. Route via `gsd-sdk query agent.classify-failure` → `class: "quota-exceeded"`. Do not offer retry-now; the right action is wait-for-reset and resume.
+- **Quota / rate-limit (any runtime — #3095):** Agent return body contains a sentinel like `usage limit`, `rate limit`, `429`, `too many requests`, `RESOURCE_EXHAUSTED`, `usage_limit_reached`. Route via `gsd-tools.cjs query agent.classify-failure` → `class: "quota-exceeded"`. Do not offer retry-now; the right action is wait-for-reset and resume.
 - **classifyHandoffIfNeeded false failure:** Agent reports "failed" but error is `classifyHandoffIfNeeded is not defined` → Claude Code bug, not GSD. Spot-check (SUMMARY exists, commits present) → if pass, treat as success
 - **Agent fails mid-plan:** Missing SUMMARY.md → report, ask user how to proceed
 - **Dependency chain breaks:** Wave 1 fails → Wave 2 dependents likely fail → user chooses attempt or skip

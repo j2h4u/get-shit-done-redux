@@ -12,14 +12,12 @@ Read all files referenced by the invoking prompt's execution_context before star
 Gather project statistics:
 
 ```bash
-# SDK resolution: prefer local gsd-tools.cjs, fall back to global gsd-sdk (#3668)
+# SDK resolution: prefer local gsd-tools.cjs, fail if local gsd-tools.cjs is missing (#3668)
 GSD_TOOLS="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/get-shit-done/bin/gsd-tools.cjs"
 if [ -f "$GSD_TOOLS" ]; then
   GSD_SDK="node $GSD_TOOLS"
-elif command -v gsd-sdk >/dev/null 2>&1; then
-  GSD_SDK="gsd-sdk"
 else
-  echo "ERROR: gsd-sdk not found on PATH and $GSD_TOOLS does not exist." >&2
+  echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS." >&2
   echo "Run: npx -y @opengsd/get-shit-done-redux@latest --claude --local" >&2
   exit 1
 fi
@@ -63,7 +61,7 @@ If no `.planning/` directory exists, inform the user to run `/gsd:new-project` f
 </step>
 
 <step name="mvp_summary">
-**MVP phase summary.** Read all phases via `gsd-sdk query roadmap.analyze` (Phase 1's `cmdRoadmapAnalyze` surfaces a `mode` field per phase). Count phases by mode:
+**MVP phase summary.** Read all phases via `gsd-tools.cjs query roadmap.analyze` (Phase 1's `cmdRoadmapAnalyze` surfaces a `mode` field per phase). Count phases by mode:
 
 ```bash
 ANALYZE=$($GSD_SDK query roadmap.analyze)

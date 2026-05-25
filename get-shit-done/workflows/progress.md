@@ -12,14 +12,12 @@ Read all files referenced by the invoking prompt's execution_context before star
 **Load progress context (paths only):**
 
 ```bash
-# SDK resolution: prefer local gsd-tools.cjs, fall back to global gsd-sdk (#3668)
+# SDK resolution: prefer local gsd-tools.cjs, fail if local gsd-tools.cjs is missing (#3668)
 GSD_TOOLS="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/get-shit-done/bin/gsd-tools.cjs"
 if [ -f "$GSD_TOOLS" ]; then
   GSD_SDK="node $GSD_TOOLS"
-elif command -v gsd-sdk >/dev/null 2>&1; then
-  GSD_SDK="gsd-sdk"
 else
-  echo "ERROR: gsd-sdk not found on PATH and $GSD_TOOLS does not exist." >&2
+  echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS." >&2
   echo "Run: npx -y @opengsd/get-shit-done-redux@latest --claude --local" >&2
   exit 1
 fi
@@ -53,11 +51,11 @@ If missing both ROADMAP.md and PROJECT.md: suggest `/gsd:new-project`.
 </step>
 
 <step name="load">
-**Use structured extraction from `gsd-sdk query` (or legacy gsd-tools.cjs):**
+**Use structured extraction from `gsd-tools.cjs query` (or legacy gsd-tools.cjs):**
 
 Instead of reading full files, use targeted tools to get only the data needed for the report:
-- `ROADMAP=$(gsd-sdk query roadmap.analyze)`
-- `STATE=$(gsd-sdk query state-snapshot)`
+- `ROADMAP=$(gsd-tools.cjs query roadmap.analyze)`
+- `STATE=$(gsd-tools.cjs query state-snapshot)`
 
 This minimizes orchestrator context usage.
 </step>
@@ -105,7 +103,7 @@ Use this instead of manually reading/parsing ROADMAP.md.
 > blocks are a secondary config aid that may be significantly stale — do NOT use the
 > CLAUDE.md project description as a source for any progress report field.
 
-**Generate progress bar from `gsd-sdk query progress` / `progress.json`, then present rich status report:**
+**Generate progress bar from `gsd-tools.cjs query progress` / `progress.json`, then present rich status report:**
 
 ```bash
 # Get formatted progress bar

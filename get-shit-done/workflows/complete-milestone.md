@@ -41,14 +41,12 @@ When a milestone completes:
 Before proceeding with milestone close, run the comprehensive open artifact audit.
 
 ```bash
-# SDK resolution: prefer local gsd-tools.cjs, fall back to global gsd-sdk (#3668)
+# SDK resolution: prefer local gsd-tools.cjs, fail if local gsd-tools.cjs is missing (#3668)
 GSD_TOOLS="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/get-shit-done/bin/gsd-tools.cjs"
 if [ -f "$GSD_TOOLS" ]; then
   GSD_SDK="node $GSD_TOOLS"
-elif command -v gsd-sdk >/dev/null 2>&1; then
-  GSD_SDK="gsd-sdk"
 else
-  echo "ERROR: gsd-sdk not found on PATH and $GSD_TOOLS does not exist." >&2
+  echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS." >&2
   echo "Run: npx -y @opengsd/get-shit-done-redux@latest --claude --local" >&2
   exit 1
 fi
@@ -68,7 +66,7 @@ These items are open. Choose an action:
 ```
 
 If user chooses [A] (Acknowledge):
-1. Re-run `gsd-sdk query audit-open --json` to get structured data
+1. Re-run `gsd-tools.cjs query audit-open --json` to get structured data
 2. Write acknowledged items to STATE.md under `## Deferred Items` section:
    ```markdown
    ## Deferred Items
@@ -229,7 +227,7 @@ Key accomplishments for this milestone:
 
 <step name="create_milestone_entry">
 
-**Note:** MILESTONES.md entry is now created automatically by `gsd-sdk query milestone.complete` in the archive_milestone step. The entry includes version, date, phase/plan/task counts, and accomplishments extracted from SUMMARY.md files.
+**Note:** MILESTONES.md entry is now created automatically by `gsd-tools.cjs query milestone.complete` in the archive_milestone step. The entry includes version, date, phase/plan/task counts, and accomplishments extracted from SUMMARY.md files.
 
 If additional details are needed (e.g., user-provided "Delivered" summary, git range, LOC stats), add them manually after the CLI creates the base entry.
 
@@ -420,7 +418,7 @@ Update `.planning/ROADMAP.md` — group completed milestone phases:
 
 <step name="archive_milestone">
 
-**Delegate archival to `gsd-sdk query milestone.complete`:**
+**Delegate archival to `gsd-tools.cjs query milestone.complete`:**
 
 ```bash
 ARCHIVE=$($GSD_SDK query milestone.complete "v[X.Y]" --name "[Milestone Name]")
@@ -736,7 +734,7 @@ fi
 <step name="git_tag">
 
 <config-check>
-Read `git.create_tag` via `gsd-sdk query config-get git.create_tag 2>/dev/null || echo "true"`.
+Read `git.create_tag` via `gsd-tools.cjs query config-get git.create_tag 2>/dev/null || echo "true"`.
 If the result is `false` → skip this step entirely and proceed to `git_commit_milestone`.
 </config-check>
 

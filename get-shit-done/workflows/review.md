@@ -24,14 +24,12 @@ command -v qwen >/dev/null 2>&1 && echo "qwen:available" || echo "qwen:missing"
 command -v cursor >/dev/null 2>&1 && echo "cursor:available" || echo "cursor:missing"
 
 # Check local model servers (OpenAI-compatible HTTP API — no CLI binary required)
-# SDK resolution: prefer local gsd-tools.cjs, fall back to global gsd-sdk (#3668)
+# SDK resolution: prefer local gsd-tools.cjs, fail if local gsd-tools.cjs is missing (#3668)
 GSD_TOOLS="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/get-shit-done/bin/gsd-tools.cjs"
 if [ -f "$GSD_TOOLS" ]; then
   GSD_SDK="node $GSD_TOOLS"
-elif command -v gsd-sdk >/dev/null 2>&1; then
-  GSD_SDK="gsd-sdk"
 else
-  echo "ERROR: gsd-sdk not found on PATH and $GSD_TOOLS does not exist." >&2
+  echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS." >&2
   echo "Run: npx -y @opengsd/get-shit-done-redux@latest --claude --local" >&2
   exit 1
 fi
@@ -223,7 +221,7 @@ Note: The variable names above (`INSTRUCTIONS_BLOCK_FILE`, `ROADMAP_SECTION_FILE
 Read model preferences from planning config. Null/missing values fall back to CLI defaults.
 
 ```bash
-# JSON scalars from gsd-sdk query; use jq -r to strip JSON string quotes (install jq if missing)
+# JSON scalars from gsd-tools.cjs query; use jq -r to strip JSON string quotes (install jq if missing)
 GEMINI_MODEL=$($GSD_SDK query config-get review.models.gemini 2>/dev/null | jq -r '.' 2>/dev/null || true)
 CLAUDE_MODEL=$($GSD_SDK query config-get review.models.claude 2>/dev/null | jq -r '.' 2>/dev/null || true)
 CODEX_MODEL=$($GSD_SDK query config-get review.models.codex 2>/dev/null | jq -r '.' 2>/dev/null || true)

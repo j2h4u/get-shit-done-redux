@@ -29,14 +29,12 @@ Exit.
 Load phase operation context:
 
 ```bash
-# SDK resolution: prefer local gsd-tools.cjs, fall back to global gsd-sdk (#3668)
+# SDK resolution: prefer local gsd-tools.cjs, fail if local gsd-tools.cjs is missing (#3668)
 GSD_TOOLS="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/get-shit-done/bin/gsd-tools.cjs"
 if [ -f "$GSD_TOOLS" ]; then
   GSD_SDK="node $GSD_TOOLS"
-elif command -v gsd-sdk >/dev/null 2>&1; then
-  GSD_SDK="gsd-sdk"
 else
-  echo "ERROR: gsd-sdk not found on PATH and $GSD_TOOLS does not exist." >&2
+  echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS." >&2
   echo "Run: npx -y @opengsd/get-shit-done-redux@latest --claude --local" >&2
   exit 1
 fi
@@ -88,7 +86,7 @@ Wait for confirmation.
 </step>
 
 <step name="execute_removal">
-**Delegate the entire removal operation to `gsd-sdk query phase.remove`:**
+**Delegate the entire removal operation to `gsd-tools.cjs query phase.remove`:**
 
 ```bash
 RESULT=$($GSD_SDK query phase.remove "${target}")
@@ -151,7 +149,7 @@ Would you like to:
 
 - Don't remove completed phases (have SUMMARY.md files) without --force
 - Don't remove current or past phases
-- Don't manually renumber — use `gsd-sdk query phase.remove` which handles all renumbering
+- Don't manually renumber — use `gsd-tools.cjs query phase.remove` which handles all renumbering
 - Don't add "removed phase" notes to STATE.md — git commit is the record
 - Don't modify completed phase directories
 </anti_patterns>
@@ -160,7 +158,7 @@ Would you like to:
 Phase removal is complete when:
 
 - [ ] Target phase validated as future/unstarted
-- [ ] `gsd-sdk query phase.remove` executed successfully
+- [ ] `gsd-tools.cjs query phase.remove` executed successfully
 - [ ] Changes committed with descriptive message
 - [ ] User informed of changes
 </success_criteria>

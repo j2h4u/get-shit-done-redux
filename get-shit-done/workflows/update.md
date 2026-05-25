@@ -457,9 +457,9 @@ installer does not know about and will delete during the wipe.
 **Do not use bash path-stripping (`${filepath#$RUNTIME_DIR/}`) or `node -e require()`
 inline** — those patterns fail when `$RUNTIME_DIR` is unset and the stripped
 relative path may not match manifest key format, which causes CUSTOM_COUNT=0
-even when custom files exist (bug #1997). Use `gsd-sdk query detect-custom-files`
-when `gsd-sdk` is on `PATH`, or the bundled `gsd-tools.cjs detect-custom-files`
-otherwise — both resolve paths reliably with Node.js `path.relative()`.
+even when custom files exist (bug #1997). Use `gsd-tools.cjs query detect-custom-files`
+or the bundled `gsd-tools.cjs detect-custom-files` path — both resolve paths
+reliably with Node.js `path.relative()`.
 
 First, resolve the config directory (`RUNTIME_DIR`) from the install scope
 detected in `get_installed_version`:
@@ -480,15 +480,13 @@ fi
 If `RUNTIME_DIR` is empty or does not exist, skip this step (no config dir to
 inspect).
 
-Otherwise run `detect-custom-files` (prefer SDK when available):
+Otherwise run `detect-custom-files`:
 
 ```bash
 GSD_TOOLS="$RUNTIME_DIR/get-shit-done/bin/gsd-tools.cjs"
 CUSTOM_JSON=''
 if [ -f "$GSD_TOOLS" ] && [ -n "$RUNTIME_DIR" ]; then
   CUSTOM_JSON=$(node "$GSD_TOOLS" detect-custom-files --config-dir "$RUNTIME_DIR" 2>/dev/null)
-elif [ -n "$RUNTIME_DIR" ] && command -v gsd-sdk >/dev/null 2>&1; then
-  CUSTOM_JSON=$(gsd-sdk query detect-custom-files --config-dir "$RUNTIME_DIR" 2>/dev/null)
 fi
 if [ -z "$CUSTOM_JSON" ]; then
   CUSTOM_JSON='{"custom_files":[],"custom_count":0}'
