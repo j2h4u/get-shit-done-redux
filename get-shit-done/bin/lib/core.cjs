@@ -25,7 +25,7 @@ const {
   setActiveWorkstream,
   findContextMdIn,
 } = require('./planning-workspace.cjs');
-const { findProjectRoot } = require('./project-root.generated.cjs');
+const { findProjectRoot } = require('./project-root.cjs');
 
 // ─── Configuration Module (generated CJS mirror) ────────────────────────────
 // Cycle 4: import canonical defaults + normalization primitives from the
@@ -36,7 +36,7 @@ const { findProjectRoot } = require('./project-root.generated.cjs');
 const {
   CONFIG_DEFAULTS: CANONICAL_CONFIG_DEFAULTS,
   normalizeLegacyKeys,
-} = require('./configuration.generated.cjs');
+} = require('./configuration.cjs');
 
 // ─── Path helpers ────────────────────────────────────────────────────────────
 

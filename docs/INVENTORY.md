@@ -362,7 +362,7 @@ The `gsd-planner` agent is decomposed into a core agent plus reference modules t
 
 ---
 
-## CLI Modules (80 shipped)
+## CLI Modules (72 shipped)
 
 Full listing: `get-shit-done/bin/lib/*.cjs`.
 
@@ -376,16 +376,15 @@ Full listing: `get-shit-done/bin/lib/*.cjs`.
 | `cjs-sdk-bridge.cjs` | Shared SDK runtime-bridge loader (`tryLoadSdk`/`getExecuteForCjs`); consumed by every CJS router and `gsd-tools.cjs` to delegate canonical commands to the SDK in-process |
 | `clusters.cjs` | Skill cluster definitions for the runtime surface module (ADR-0011 Phase 2) |
 | `code-review-flags.cjs` | Typed flag parser for `/gsd:code-review`; exports `parseCodeReviewFlags(argv)` (→ `{ fix, all, auto, depth, files }`) and `resolveCodeReviewWorkflow(flags)` (→ `'code-review.md' \| 'code-review-fix.md'`); canonical dispatch seam for `--fix`/`--all`/`--auto` routing |
-| `command-aliases.generated.cjs` | Generated CJS alias/subcommand metadata for manifest-backed family routers |
+| `command-aliases.cjs` | Alias/subcommand metadata for manifest-backed family routers |
 | `command-routing-hub.cjs` | Pure-result dispatch hub that centralizes mode decision (SDK vs CJS), error taxonomy, and no-throw contract for all command-family routers (#3788) |
 | `commands.cjs` | Misc CLI commands (slug, timestamp, todos, scaffolding, stats) |
 | `config-schema.cjs` | Single source of truth for `VALID_CONFIG_KEYS` and dynamic key patterns; imported by both the validator and the config-schema-docs parity test |
 | `config.cjs` | `config.json` read/write, section initialization; imports validator from `config-schema.cjs` |
-| `configuration.generated.cjs` | Generated Configuration Module — canonical config loading, legacy-key normalization, defaults merge, and explicit on-disk migration; source of truth for both SDK and CJS consumers |
+| `configuration.cjs` | Configuration Module — canonical config loading, legacy-key normalization, defaults merge, and explicit on-disk migration; source of truth for both SDK and CJS consumers |
 | `context-utilization.cjs` | Pure classifier for `gsd-health --context` — turns (tokensUsed, contextWindow) into a `{ percent, state }` triage result against the 60%/70% fracture-point thresholds (#2792) |
 | `core.cjs` | Error handling, output formatting, shared utilities, runtime fallbacks; compatibility re-exports for planning-workspace helpers |
-| `decisions.cjs` | CJS shim adapter — re-exports from `decisions.generated.cjs` (Phase 6/#3575 Shared Module migration) |
-| `decisions.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/query/decisions.ts` via `sdk/scripts/gen-decisions.mjs`; parses CONTEXT.md `<decisions>` blocks, accepts numeric (D-42) and alphanumeric (D-INFRA-01) IDs, returns `{id, text, category, tags, trackable}`; do not edit directly |
+| `decisions.cjs` | Parses CONTEXT.md `<decisions>` blocks; accepts numeric (D-42) and alphanumeric (D-INFRA-01) IDs; returns `{id, text, category, tags, trackable}` |
 | `docs.cjs` | Docs-update workflow init, Markdown scanning, monorepo detection |
 | `drift.cjs` | Post-execute codebase structural drift detector (#2003): classifies file changes into new-dir/barrel/migration/route categories and round-trips `last_mapped_commit` frontmatter |
 | `fallow-runner.cjs` | Fallow audit adapter for `/gsd-code-review`: binary resolution (`PATH` then `node_modules/.bin`), actionable missing-binary errors, and structural findings normalization |
@@ -405,15 +404,12 @@ Full listing: `get-shit-done/bin/lib/*.cjs`.
 | `model-catalog.cjs` | CJS adapter over the shared model catalog JSON; exports canonical runtime tier defaults, agent profile maps, alias maps, and routing metadata for all CLI consumers |
 | `model-profiles.cjs` | Backward-compatible profile helpers derived from `model-catalog.cjs`; no longer owns its own model table |
 | `phase-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools phase` |
-| `phase-lifecycle-policy.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/query/phase-lifecycle-policy.ts` via `sdk/scripts/gen-phase-lifecycle-policy.mjs`; pure computation helpers for phase directory naming, roadmap entry generation, decimal-phase management, and ID computation; do not edit directly |
-| `phase-lifecycle.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/query/phase-lifecycle.ts` via `sdk/scripts/gen-phase-lifecycle.mjs`; pure-computation phase lifecycle helpers extracted from the phase-lifecycle SDK handler; do not edit directly |
+| `phase-lifecycle.cjs` | Pure-computation phase lifecycle helpers extracted from the phase-lifecycle SDK handler |
 | `phase.cjs` | Phase directory operations, decimal numbering, plan indexing |
-| `phase.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/query/phase.ts` via `sdk/scripts/gen-phase.mjs`; pure helper functions for phase query shared between the CJS CLI and SDK; no I/O, no async, no filesystem operations; do not edit directly |
 | `phases-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools phases` |
-| `plan-scan.cjs` | CJS shim adapter — re-exports from `plan-scan.generated.cjs` (Phase 6/#3575 Shared Module migration) |
-| `plan-scan.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/query/plan-scan.ts` via `sdk/scripts/gen-plan-scan.mjs`; canonical phase-plan scanner for detecting plan and summary files in flat and nested layouts (k014); do not edit directly |
+| `plan-scan.cjs` | Canonical phase-plan scanner for detecting plan and summary files in flat and nested layouts (k014) |
 | `planning-workspace.cjs` | Planning path/workstream seam (`planningDir`, `planningPaths`, active-workstream routing, `.planning/.lock` orchestration) |
-| `project-root.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/project-root/index.ts` via `sdk/scripts/gen-project-root.mjs`; resolves a project root from a starting directory using four heuristics (own `.planning/` guard, `sub_repos` config, `multiRepo` flag, `.git` heuristic); do not edit directly |
+| `project-root.cjs` | Resolves a project root from a starting directory using four heuristics (own `.planning/` guard, `sub_repos` config, `multiRepo` flag, `.git` heuristic) |
 | `profile-output.cjs` | Profile rendering, USER-PROFILE.md and dev-preferences.md generation |
 | `profile-pipeline.cjs` | User behavioral profiling data pipeline, session file scanning |
 | `prompt-budget.cjs` | Pure token-budget accounting for review prompts — estimates tokens, applies deterministic trim priority (head-shrink PROJECT.md, proportional plan truncation, drop context/research/requirements, hard-fail guard), returns structured metadata for `review.max_prompt_tokens` (#3081) |
@@ -424,28 +420,24 @@ Full listing: `get-shit-done/bin/lib/*.cjs`.
 | `runtime-name-policy.cjs` | Runtime name normalization policy — canonical token sanitization for runtime identifiers used in path construction and display |
 | `runtime-homes.cjs` | Canonical runtime → global config/skills directory mapping; first-class support for all 15 runtimes including Hermes nested layout and Cline rules-based exclusion (#3126) |
 | `runtime-slash.cjs` | Runtime-aware slash-command formatter — single source of truth for emitting `/gsd-<cmd>` (skills-based runtimes) and `$gsd-<cmd>` (codex) in user-facing output and persisted artifacts (#3584) |
-| `schema-detect.cjs` | CJS shim adapter — re-exports from `schema-detect.generated.cjs` (Phase 6/#3575 Shared Module migration) |
-| `schema-detect.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/query/schema-detect.ts` via `sdk/scripts/gen-schema-detect.mjs`; schema-drift detection for ORM patterns (Prisma, Drizzle, Supabase, TypeORM, Payload); exports `detectSchemaFiles`, `detectSchemaOrm`, `checkSchemaDrift`, `SCHEMA_PATTERNS`, `ORM_INFO`; do not edit directly |
-| `secrets.cjs` | CJS shim adapter — re-exports from `secrets.generated.cjs` (Phase 6/#3575 Shared Module migration) |
-| `secrets.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/query/secrets.ts` via `sdk/scripts/gen-secrets.mjs`; secret-config masking convention (`****<last-4>`) for integration keys; exports `SECRET_CONFIG_KEYS`, `isSecretKey`, `maskSecret`, `maskIfSecret`; do not edit directly |
+| `schema-detect.cjs` | Schema-drift detection for ORM patterns (Prisma, Drizzle, Supabase, TypeORM, Payload); exports `detectSchemaFiles`, `detectSchemaOrm`, `checkSchemaDrift`, `SCHEMA_PATTERNS`, `ORM_INFO` |
+| `secrets.cjs` | Secret-config masking convention (`****<last-4>`) for integration keys; exports `SECRET_CONFIG_KEYS`, `isSecretKey`, `maskSecret`, `maskIfSecret` |
 | `semver-compare.cjs` | Shared semver comparison policy helpers (`compareSemverCore`, stable-triplet validation, normalized tuple parsing) consumed by update-check hooks, statusline dev-install detection, and changeset extract range logic (#10) |
 | `security.cjs` | Path traversal prevention, prompt injection detection, safe JSON/shell helpers |
 | `shell-command-projection.cjs` | Runtime-aware shell command projection for managed hook serialization: decides PowerShell call-operator usage by runtime/platform and normalizes Windows script path tokens |
 | `state-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools state` |
 | `state.cjs` | STATE.md parsing, updating, progression, metrics |
 | `state-document.cjs` | Pure STATE.md field extraction, replacement, status normalization, and progress calculation transforms |
-| `state-document.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/state/index.ts` via `sdk/scripts/gen-state-document.ts`; do not edit directly |
 | `surface.cjs` | Runtime surface module — manages the runtime enable/disable surface state independently of the install-time profile marker (ADR-0011 Phase 2) |
 | `template.cjs` | Template selection and filling with variable substitution |
 | `uat.cjs` | UAT file parsing, verification debt tracking, audit-uat support |
 | `validate-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools validate` |
-| `validate.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/query/validate.ts` via `sdk/scripts/gen-validate.mjs`; pure phase variant normalization helpers (`phaseVariants`, `buildRoadmapPhaseVariants`, `buildNotStartedPhaseVariants`) used by `verify.cjs` for W006/W007 checks; no I/O, no async; do not edit directly |
+| `validate.cjs` | Pure phase variant normalization helpers (`phaseVariants`, `buildRoadmapPhaseVariants`, `buildNotStartedPhaseVariants`) used by `verify.cjs` for W006/W007 checks; no I/O, no async |
 | `verify-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools verify` |
 | `verify.cjs` | Plan structure, phase completeness, reference, commit validation |
-| `workstream-inventory-builder.generated.cjs` | GENERATED — pure workstream inventory projection builder; CJS artifact emitted from `sdk/src/workstream/builder.ts` via `sdk/scripts/gen-workstream-inventory-builder.mjs`; do not edit directly |
-| `workstream-inventory.cjs` | Shared workstream inventory projection: state fields, phase/plan/summary counts, roadmap phase count, and active marker — thin orchestrator that delegates pure projection to `workstream-inventory-builder.generated.cjs` |
-| `workstream-name-policy.cjs` | CJS shim adapter — re-exports from `workstream-name-policy.generated.cjs` (Phase 6/#3575 Shared Module migration) |
-| `workstream-name-policy.generated.cjs` | GENERATED — CJS artifact emitted from `sdk/src/workstream-name-policy.ts` via `sdk/scripts/gen-workstream-name-policy.mjs`; canonical workstream name validation (`isValidActiveWorkstreamName`, `hasInvalidPathSegment`, `validateWorkstreamName`) and slug normalization (`toWorkstreamSlug`); do not edit directly |
+| `workstream-inventory-builder.cjs` | Pure workstream inventory projection builder |
+| `workstream-inventory.cjs` | Shared workstream inventory projection: state fields, phase/plan/summary counts, roadmap phase count, and active marker — thin orchestrator that delegates pure projection to `workstream-inventory-builder.cjs` |
+| `workstream-name-policy.cjs` | Canonical workstream name validation (`isValidActiveWorkstreamName`, `hasInvalidPathSegment`, `validateWorkstreamName`) and slug normalization (`toWorkstreamSlug`) |
 | `workstream.cjs` | Workstream CRUD, migration, session-scoped active pointer |
 | `worktree-safety.cjs` | Worktree-root resolution and non-destructive prune policy decisions; owns W017 health-check logic |
 

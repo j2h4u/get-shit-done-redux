@@ -17,7 +17,7 @@ const { toPosixPath, readSubdirectories } = require('./core.cjs');
 const scanPhasePlans = require('./plan-scan.cjs');
 const { planningPaths, planningRoot, getActiveWorkstream } = require('./planning-workspace.cjs');
 const { stateExtractField } = require('./state-document.cjs');
-const { buildWorkstreamInventory, isCompletedInventory } = require('./workstream-inventory-builder.generated.cjs');
+const { buildWorkstreamInventory, isCompletedInventory } = require('./workstream-inventory-builder.cjs');
 
 function workstreamsRoot(cwd) {
   return path.join(planningRoot(cwd), 'workstreams');

@@ -1,26 +1,97 @@
 'use strict';
 
 /**
- * Plan Scan Module — CJS adapter.
+ * GENERATED FILE — DO NOT EDIT.
  *
- * The implementation is generated from sdk/src/query/plan-scan.ts and
- * lives in plan-scan.generated.cjs. This file is a thin re-export so
- * that existing call sites (state.cjs, roadmap.cjs, init.cjs,
- * workstream-inventory.cjs, and tests) can continue to require('./plan-scan')
- * unchanged.
- *
- * Exports (from generated file):
- *   - scanPhasePlans(phaseDir) — canonical phase-plan scanner
- *   - isRootPlanFile(fileName) — extended filter including /PLAN/i slug layouts
- *   - isNestedPlanFile(fileName) — nested plans/ subdir filter
- *   - isRootSummaryFile(fileName) — flat summary file filter
- *   - isNestedSummaryFile(fileName) — nested summary file filter
- *
- * The isRootPlanFile helper uses /PLAN/i to match the extended slug layout
- * (e.g. 5-PLAN-01-setup-database.md) in addition to bare and canonical forms.
- * This was the fix for bug #3128 (roadmap.cjs plan-count regression).
- *
+ * Source: sdk/src/query/plan-scan.ts
  * Regenerate: cd sdk && npm run gen:plan-scan
+ *
+ * Plan Scan Module — detects plan and summary files in a phase directory.
+ * Supports both flat (pre-#3139) and nested (post-#3139) layouts.
  */
 
-module.exports = require('./plan-scan.generated.cjs');
+const { existsSync, readdirSync } = require('node:fs');
+const { join } = require('node:path');
+
+// Excluded derivative files
+const PLAN_OUTLINE_RE = /-OUTLINE\.md$/i;
+const PLAN_PRE_BOUNCE_RE = /\.pre-bounce\.md$/i;
+
+function isRootPlanFile(fileName) {
+    if (PLAN_OUTLINE_RE.test(fileName))
+        return false;
+    if (PLAN_PRE_BOUNCE_RE.test(fileName))
+        return false;
+    if (fileName.endsWith('-PLAN.md') || fileName === 'PLAN.md')
+        return true;
+    return /\.md$/i.test(fileName) && /PLAN/i.test(fileName);
+}
+
+function isNestedPlanFile(fileName) {
+    if (PLAN_OUTLINE_RE.test(fileName))
+        return false;
+    if (PLAN_PRE_BOUNCE_RE.test(fileName))
+        return false;
+    return /^PLAN-\d+.*\.md$/i.test(fileName) || /-PLAN-\d+.*\.md$/i.test(fileName);
+}
+
+function isRootSummaryFile(fileName) {
+    return fileName.endsWith('-SUMMARY.md') || fileName === 'SUMMARY.md';
+}
+
+function isNestedSummaryFile(fileName) {
+    return /^SUMMARY-\d+.*\.md$/i.test(fileName) || /-SUMMARY-\d+.*\.md$/i.test(fileName);
+}
+
+function scanPhasePlans(phaseDir) {
+    let rootFiles;
+    try {
+        rootFiles = readdirSync(phaseDir);
+    }
+    catch {
+        return {
+            planCount: 0,
+            summaryCount: 0,
+            completed: false,
+            hasNestedPlans: false,
+            planFiles: [],
+            summaryFiles: [],
+        };
+    }
+    const rootPlanFiles = rootFiles.filter(isRootPlanFile);
+    const rootSummaryFiles = rootFiles.filter(isRootSummaryFile);
+    let nestedPlanFiles = [];
+    let nestedSummaryFiles = [];
+    let hasNestedPlans = false;
+    const nestedDir = join(phaseDir, 'plans');
+    if (existsSync(nestedDir)) {
+        try {
+            const nestedFiles = readdirSync(nestedDir);
+            nestedPlanFiles = nestedFiles.filter(isNestedPlanFile);
+            nestedSummaryFiles = nestedFiles.filter(isNestedSummaryFile);
+            hasNestedPlans = nestedPlanFiles.length > 0;
+        }
+        catch { /* ignore unreadable nested layout */ }
+    }
+    const planFiles = rootPlanFiles.concat(nestedPlanFiles);
+    const summaryFiles = rootSummaryFiles.concat(nestedSummaryFiles);
+    const planCount = planFiles.length;
+    const summaryCount = summaryFiles.length;
+    return {
+        planCount,
+        summaryCount,
+        completed: planCount > 0 && summaryCount >= planCount,
+        hasNestedPlans,
+        planFiles,
+        summaryFiles,
+    };
+}
+
+// CJS callers do: const scanPhasePlans = require('./plan-scan.cjs')
+// and also destructure named exports — support both call styles.
+module.exports = scanPhasePlans;
+module.exports.scanPhasePlans = scanPhasePlans;
+module.exports.isRootPlanFile = isRootPlanFile;
+module.exports.isNestedPlanFile = isNestedPlanFile;
+module.exports.isRootSummaryFile = isRootSummaryFile;
+module.exports.isNestedSummaryFile = isNestedSummaryFile;

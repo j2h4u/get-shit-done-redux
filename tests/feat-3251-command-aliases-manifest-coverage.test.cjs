@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Regression guard for issue #3251:
- * 14 commands used in workflows must be present in command-aliases.generated.cjs.
+ * 14 commands used in workflows must be present in command-aliases.cjs.
  *
  * Asserts structurally by requiring the manifest and checking each canonical
  * command appears in either the family arrays or the non-family array.
@@ -22,7 +22,7 @@ const COMMAND_ALIASES_FILE = path.join(
   'get-shit-done',
   'bin',
   'lib',
-  'command-aliases.generated.cjs',
+  'command-aliases.cjs',
 );
 const GSD_TOOLS = path.join(REPO_ROOT, 'get-shit-done', 'bin', 'gsd-tools.cjs');
 
@@ -43,7 +43,7 @@ const MISSING_14 = [
   'workstream.list',
 ];
 
-describe('feat-3251: command-aliases.generated.cjs manifest coverage', () => {
+describe('feat-3251: command-aliases.cjs manifest coverage', () => {
   let manifest;
 
   test('manifest file can be required without error', () => {
@@ -59,7 +59,7 @@ describe('feat-3251: command-aliases.generated.cjs manifest coverage', () => {
     manifest = manifest ?? require(COMMAND_ALIASES_FILE);
     assert.ok(
       Array.isArray(manifest.NON_FAMILY_COMMAND_ALIASES),
-      'NON_FAMILY_COMMAND_ALIASES must be an exported array in command-aliases.generated.cjs',
+      'NON_FAMILY_COMMAND_ALIASES must be an exported array in command-aliases.cjs',
     );
   });
 

@@ -1,6 +1,6 @@
 'use strict';
 
-const { PHASE_SUBCOMMANDS } = require('./command-aliases.generated.cjs');
+const { PHASE_SUBCOMMANDS } = require('./command-aliases.cjs');
 
 // ─── CommandRoutingHub (issue #3788, simplified in #175, typed in #176) ───────
 const { createHub, ERROR_KINDS, makeInvalidArgs } = require('./command-routing-hub.cjs');

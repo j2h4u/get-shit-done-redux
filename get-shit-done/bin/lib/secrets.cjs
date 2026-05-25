@@ -1,20 +1,37 @@
 'use strict';
 
 /**
- * Secrets Module — CJS adapter.
+ * GENERATED FILE — DO NOT EDIT.
  *
- * The implementation is generated from sdk/src/query/secrets.ts and
- * lives in secrets.generated.cjs. This file is a thin re-export so
- * that existing call sites (config.cjs, init.cjs, and tests) can
- * continue to require('./secrets') unchanged.
- *
- * Exports (from generated file):
- *   - SECRET_CONFIG_KEYS — Set of secret key paths
- *   - isSecretKey(keyPath) — returns true if keyPath is a secret
- *   - maskSecret(value) — masks a secret value
- *   - maskIfSecret(keyPath, value) — masks value only if keyPath is secret
- *
+ * Source: sdk/src/query/secrets.ts
  * Regenerate: cd sdk && npm run gen:secrets
+ *
+ * Secrets handling — masking convention for API keys and other
+ * credentials managed via /gsd-settings-integrations.
+ * This module does not read the filesystem.
  */
 
-module.exports = require('./secrets.generated.cjs');
+const SECRET_CONFIG_KEYS = new Set([
+  'brave_search',
+  'firecrawl',
+  'exa_search',
+]);
+
+function isSecretKey(keyPath) {
+    return SECRET_CONFIG_KEYS.has(keyPath);
+}
+
+function maskSecret(value) {
+    if (value === null || value === undefined || value === '')
+        return '(unset)';
+    const s = String(value);
+    if (s.length < 8)
+        return '****';
+    return '****' + s.slice(-4);
+}
+
+function maskIfSecret(keyPath, value) {
+    return isSecretKey(keyPath) ? maskSecret(value) : value;
+}
+
+module.exports = { SECRET_CONFIG_KEYS, isSecretKey, maskSecret, maskIfSecret };

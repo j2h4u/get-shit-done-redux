@@ -33,6 +33,12 @@
       "justification": "CJS phase.cjs implements sync mutation handlers (phaseAdd, phaseInsert, phaseRemove, phaseComplete) and query handlers with sync I/O; SDK phase.ts provides the native async query handler. The async mutation handlers (phase-lifecycle.ts) and pure policy helpers (phase-lifecycle-policy.ts) are I/O-bound or pure and remain per-side (ADR-3524 §4). Issue #4 fix: phase.cjs cmdPhaseComplete now consumes pure helpers from phase-lifecycle.generated.cjs (generated from sdk/src/query/phase-lifecycle.ts) for idempotent Completed Phases counting and clamped percent. *.generated.cjs files are excluded from lint scanner; see sdk/scripts/check-phase-lifecycle-fresh.mjs for freshness enforcement."
     },
     {
+      "cjs": "get-shit-done/bin/lib/phase-lifecycle.cjs",
+      "ts": "sdk/src/query/phase-lifecycle.ts",
+      "classification": "ADAPTER-OVER-MODULE",
+      "justification": "CJS phase-lifecycle.cjs is the pure helper module consumed by phase.cjs; sdk/src/query/phase-lifecycle.ts remains the typed source counterpart. This pair is intentionally tracked as adapter-over-module rather than an unauthorized hand-sync pair."
+    },
+    {
       "cjs": "get-shit-done/bin/lib/profile-output.cjs",
       "ts": "sdk/src/query/profile-output.ts",
       "classification": "cooperating-sibling",
@@ -73,6 +79,12 @@
       "ts": "sdk/src/query/verify.ts",
       "classification": "cooperating-sibling",
       "justification": "CJS verify.cjs is the full verify implementation; SDK verify.ts provides the native handler. Phase 5.2+ candidate for further delegation. Check 8 (W006/W007) helpers now generated from sdk/src/query/validate.ts via sdk/scripts/gen-validate.mjs (issue #6); freshness check: sdk/scripts/check-validate-fresh.mjs."
+    },
+    {
+      "cjs": "get-shit-done/bin/lib/validate.cjs",
+      "ts": "sdk/src/query/validate.ts",
+      "classification": "ADAPTER-OVER-MODULE",
+      "justification": "CJS validate.cjs provides the pure validation helpers consumed by verify.cjs while sdk/src/query/validate.ts is the SDK handler-side counterpart. Keep this explicit adapter pair allowlisted to avoid false-positive hand-sync lint failures."
     },
     {
       "cjs": "get-shit-done/bin/lib/workstream.cjs",

@@ -671,7 +671,7 @@ function cmdConfigPath(cwd) {
  * summary when --raw is set. Exits 0 in all cases (including no-op).
  */
 async function cmdMigrateConfig(cwd, raw) {
-  const { migrateOnDisk } = require('./configuration.generated.cjs');
+  const { migrateOnDisk } = require('./configuration.cjs');
   const ws = process.env.GSD_WORKSTREAM || null;
   const report = await migrateOnDisk(cwd, ws || undefined);
 

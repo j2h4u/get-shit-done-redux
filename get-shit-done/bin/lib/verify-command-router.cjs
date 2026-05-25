@@ -1,6 +1,6 @@
 'use strict';
 
-const { VERIFY_SUBCOMMANDS } = require('./command-aliases.generated.cjs');
+const { VERIFY_SUBCOMMANDS } = require('./command-aliases.cjs');
 const { routeCjsCommandFamily } = require('./cjs-command-router-adapter.cjs');
 const { output } = require('./core.cjs');
 

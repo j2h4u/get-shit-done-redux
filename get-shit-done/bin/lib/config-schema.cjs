@@ -17,7 +17,7 @@ const {
   VALID_CONFIG_KEYS,
   RUNTIME_STATE_KEYS,
   DYNAMIC_KEY_PATTERNS,
-} = require('./configuration.generated.cjs');
+} = require('./configuration.cjs');
 
 /**
  * Returns true if keyPath is a valid config key (exact, dynamic pattern, or runtime state).
