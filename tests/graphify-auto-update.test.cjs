@@ -604,8 +604,15 @@ describe('auto-update', () => {
           { tool_name: 'Bash', tool_input: { command: cmd } },
           { pathPrepend: mockBin },
         );
+        const statusPath = path.join(tmpDir, '.planning/graphs/.last-build-status.json');
+        const waitBudgetMs = 2500; // 100 ms mock sleep + hook/detached bash startup slack
+        const maxIter = Math.ceil(waitBudgetMs / 100);
+        for (let i = 0; i < maxIter; i++) {
+          if (fs.existsSync(statusPath)) break;
+          atomicSleep(100);
+        }
         assert.ok(
-          fs.existsSync(path.join(tmpDir, '.planning/graphs/.last-build-status.json')),
+          fs.existsSync(statusPath),
           `must dispatch for HEAD-advancing op: ${cmd}`,
         );
       });
