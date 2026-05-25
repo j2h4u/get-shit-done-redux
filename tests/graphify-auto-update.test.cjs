@@ -26,7 +26,7 @@ const {
 
 const {
   CONFIG_DEFAULTS: CANONICAL_CONFIG_DEFAULTS,
-} = require('../get-shit-done/bin/lib/configuration.generated.cjs');
+} = require('../get-shit-done/bin/lib/configuration.cjs');
 
 const {
   makeStatusProject,

@@ -1,6 +1,6 @@
 'use strict';
 
-const { VALIDATE_SUBCOMMANDS } = require('./command-aliases.generated.cjs');
+const { VALIDATE_SUBCOMMANDS } = require('./command-aliases.cjs');
 const { formatGsdSlash, resolveRuntime } = require('./runtime-slash.cjs');
 const { routeCjsCommandFamily } = require('./cjs-command-router-adapter.cjs');
 const { output } = require('./core.cjs');

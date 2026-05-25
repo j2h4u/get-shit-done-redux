@@ -14,7 +14,7 @@ const path = require('path');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const REGISTRY_FILE = path.join(REPO_ROOT, 'sdk', 'src', 'query', 'registry-assembly.ts');
-const COMMAND_ALIASES_FILE = path.join(REPO_ROOT, 'get-shit-done', 'bin', 'lib', 'command-aliases.generated.cjs');
+const COMMAND_ALIASES_FILE = path.join(REPO_ROOT, 'get-shit-done', 'bin', 'lib', 'command-aliases.cjs');
 
 // Prose tokens that repeatedly appear after `gsd-sdk query` in English
 // documentation but aren't real command names.

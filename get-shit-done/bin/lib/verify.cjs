@@ -7,7 +7,7 @@ const {
   phaseVariants, buildRoadmapPhaseVariants, buildNotStartedPhaseVariants,
   // Issue #26 exports (W005 regex, W006-archived regex constants, I001 helper)
   phaseDirNameRe, PHASE_TOKEN_FROM_DIR_RE, MILESTONE_ARCHIVE_DIR_RE, canonicalPlanStem,
-} = require('./validate.generated.cjs');
+} = require('./validate.cjs');
 
 const fs = require('fs');
 const path = require('path');

@@ -22,7 +22,7 @@ const { writeStateMd, readModifyWriteStateMd, stateExtractField, stateReplaceFie
 const { formatGsdSlash, resolveRuntime } = require('./runtime-slash.cjs');
 // Generated pure-computation helpers for cmdPhaseComplete (issue #4 fix).
 // Source: sdk/src/query/phase-lifecycle.ts. Regenerate: node sdk/scripts/gen-phase-lifecycle.mjs
-const { deriveProgressFromRoadmap, clampPercent } = require('./phase-lifecycle.generated.cjs');
+const { deriveProgressFromRoadmap, clampPercent } = require('./phase-lifecycle.cjs');
 
 // #2893 — strict canonical filter: `{padded_phase}-{NN}-PLAN.md` or `PLAN.md`.
 // Documented in agents/gsd-planner.md (write_phase_prompt step). The wider

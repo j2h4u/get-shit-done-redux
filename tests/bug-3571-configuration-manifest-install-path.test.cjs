@@ -1,5 +1,5 @@
 /**
- * Regression test for #3571: configuration.generated.cjs used the source
+ * Regression test for #3571: configuration.cjs used the source
  * checkout sdk/shared path only, which breaks installed gsd-tools.cjs because
  * runtime installs copy get-shit-done/ but not sdk/.
  */
@@ -15,7 +15,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const REPO_ROOT = path.join(__dirname, '..');
-const CONFIGURATION_CJS = path.join(REPO_ROOT, 'get-shit-done', 'bin', 'lib', 'configuration.generated.cjs');
+const CONFIGURATION_CJS = path.join(REPO_ROOT, 'get-shit-done', 'bin', 'lib', 'configuration.cjs');
 const SDK_SHARED_DIR = path.join(REPO_ROOT, 'sdk', 'shared');
 
 const { install } = require('../bin/install.js');
@@ -68,14 +68,14 @@ describe('bug #3571: configuration generated manifests resolve in install layout
     fs.rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
-  test('co-located bin/shared manifests let configuration.generated.cjs load without sdk/shared', () => {
+  test('co-located bin/shared manifests let configuration.cjs load without sdk/shared', () => {
     const gsdBinDir = path.join(tmpRoot, '.codex', 'get-shit-done', 'bin');
     const gsdLibDir = path.join(gsdBinDir, 'lib');
     const gsdSharedDir = path.join(gsdBinDir, 'shared');
     fs.mkdirSync(gsdLibDir, { recursive: true });
     fs.mkdirSync(gsdSharedDir, { recursive: true });
 
-    const installedCjs = path.join(gsdLibDir, 'configuration.generated.cjs');
+    const installedCjs = path.join(gsdLibDir, 'configuration.cjs');
     fs.copyFileSync(CONFIGURATION_CJS, installedCjs);
     fs.copyFileSync(
       path.join(SDK_SHARED_DIR, 'config-defaults.manifest.json'),
@@ -90,7 +90,7 @@ describe('bug #3571: configuration generated manifests resolve in install layout
     let mod;
     assert.doesNotThrow(() => {
       mod = require(installedCjs);
-    }, 'installed configuration.generated.cjs must not require ~/.codex/sdk/shared');
+    }, 'installed configuration.cjs must not require ~/.codex/sdk/shared');
 
     assert.ok(mod.VALID_CONFIG_KEYS.has('workflow.plan_review_convergence'));
   });
@@ -118,12 +118,12 @@ describe('bug #3571: configuration generated manifests resolve in install layout
       'get-shit-done',
       'bin',
       'lib',
-      'configuration.generated.cjs'
+      'configuration.cjs'
     );
 
     delete require.cache[installedCjs];
     assert.doesNotThrow(() => {
       require(installedCjs);
-    }, 'post-install configuration.generated.cjs must load from co-located manifests');
+    }, 'post-install configuration.cjs must load from co-located manifests');
   });
 });
