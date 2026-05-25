@@ -771,19 +771,11 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
     }
 
     case 'current-timestamp': {
-      // Phase 6 (#3575): dispatch via SDK executeForCjs when available.
-      // SDK handler: currentTimestamp in sdk/src/query/utils.ts.
-      const handled = _dispatchNonFamily({
-        registryCommand: 'current-timestamp',
-        registryArgs: args.slice(1),
-        legacyCommand: 'current-timestamp',
-        legacyArgs: args.slice(1),
-        cwd,
-        raw,
-        error,
-        output: core.output,
-      });
-      if (!handled) commands.cmdCurrentTimestamp(args[1] || 'full', raw);
+      // Keep this command on the CJS fast path.
+      // Rationale: it is a pure local formatter and avoids SDK bridge startup
+      // in tight subprocess loops where Windows CI has shown intermittent
+      // native crashes (0xC0000005 / 3221225477).
+      commands.cmdCurrentTimestamp(args[1] || 'full', raw);
       break;
     }
 
