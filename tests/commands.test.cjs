@@ -888,6 +888,24 @@ describe('current-timestamp command', () => {
     const output = JSON.parse(result.output);
     assert.match(output.timestamp, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, 'default should be full ISO format');
   });
+
+  test('dispatches directly to CJS handler (no SDK bridge) to avoid Windows native crash path', () => {
+    const sourcePath = path.join(__dirname, '..', 'get-shit-done', 'bin', 'gsd-tools.cjs');
+    const source = fs.readFileSync(sourcePath, 'utf8');
+    const match = source.match(/case 'current-timestamp':\s*\{[\s\S]*?\n\s*break;\n\s*\}/);
+
+    assert.ok(match, 'current-timestamp case block must exist in gsd-tools.cjs');
+
+    const block = match[0];
+    assert.ok(
+      !block.includes('_dispatchNonFamily('),
+      'current-timestamp must not route through SDK bridge'
+    );
+    assert.ok(
+      block.includes("commands.cmdCurrentTimestamp(args[1] || 'full', raw);"),
+      'current-timestamp must call the CJS handler directly'
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

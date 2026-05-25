@@ -24,15 +24,33 @@ import { homedir } from 'node:os';
 import { GSDError, ErrorClassification } from '../errors.js';
 export { SUPPORTED_RUNTIMES, type Runtime } from '../model-catalog.js';
 import { SUPPORTED_RUNTIMES, type Runtime } from '../model-catalog.js';
-import { canonicalizeRuntimeName } from '../runtime-name-policy.js';
+import { canonicalizeRuntimeName } from '../runtime/name-policy.js';
 import { workspacePlanningPaths, resolveWorkspaceContext, type PlanningPaths } from './workspace.js';
-export { stateExtractField } from './state-document.js';
+export { stateExtractField } from '../state/index.js';
 import { relPlanningPath, validateWorkstreamName } from '../workstream-utils.js';
 
 // ─── Runtime-aware agents directory resolution ─────────────────────────────
 
 function expandTilde(p: string): string {
   return p.startsWith('~/') || p === '~' ? join(homedir(), p.slice(1)) : p;
+}
+
+function resolveAntigravityConfigDir(): string {
+  if (process.env.ANTIGRAVITY_CONFIG_DIR) {
+    return expandTilde(process.env.ANTIGRAVITY_CONFIG_DIR);
+  }
+
+  const home = homedir();
+  const base = join(home, '.gemini');
+  const candidates = [
+    join(base, 'antigravity'),
+    join(base, 'antigravity-ide'),
+    join(base, 'antigravity-cli'),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return join(base, 'antigravity');
 }
 
 /**
@@ -62,7 +80,7 @@ export function getRuntimeConfigDir(runtime: Runtime): string {
     case 'copilot':
       return process.env.COPILOT_CONFIG_DIR ? expandTilde(process.env.COPILOT_CONFIG_DIR) : join(homedir(), '.copilot');
     case 'antigravity':
-      return process.env.ANTIGRAVITY_CONFIG_DIR ? expandTilde(process.env.ANTIGRAVITY_CONFIG_DIR) : join(homedir(), '.gemini', 'antigravity');
+      return resolveAntigravityConfigDir();
     case 'cursor':
       return process.env.CURSOR_CONFIG_DIR ? expandTilde(process.env.CURSOR_CONFIG_DIR) : join(homedir(), '.cursor');
     case 'windsurf':
@@ -484,9 +502,9 @@ export function planningPaths(projectDir: string, workstream?: string): Planning
 }
 
 // ─── findProjectRoot (multi-repo .planning resolution) ─────────────────────
-// Implementation lives in sdk/src/project-root/index.ts — re-exported here
+// Implementation lives in sdk/src/runtime/project-root.ts — re-exported here
 // so that existing consumers of helpers.ts continue to work unchanged.
-export { findProjectRoot } from '../project-root/index.js';
+export { findProjectRoot } from '../runtime/project-root.js';
 
 // ─── resolvePathUnderProject ───────────────────────────────────────────────
 

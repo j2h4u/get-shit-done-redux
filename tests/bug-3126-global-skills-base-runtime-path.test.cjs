@@ -20,6 +20,7 @@ const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const os = require('node:os');
+const { cleanup } = require('./helpers.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const {
@@ -116,6 +117,29 @@ describe('bug #3126: runtime-homes env-var overrides', () => {
         assert.strictEqual(getGlobalConfigDir('kilo'), path.join('/xdg', 'kilo'));
       });
     });
+  });
+
+  test('antigravity detects 2.x IDE dir when legacy dir is absent', () => {
+    const home = require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'gsd-antigravity-home-'));
+    try {
+      require('node:fs').mkdirSync(path.join(home, '.gemini', 'antigravity-ide'), { recursive: true });
+      const savedHome = process.env.HOME;
+      const savedUserProfile = process.env.USERPROFILE;
+      process.env.HOME = home;
+      process.env.USERPROFILE = home;
+      withEnv('ANTIGRAVITY_CONFIG_DIR', undefined, () => {
+        assert.strictEqual(
+          getGlobalConfigDir('antigravity'),
+          path.join(home, '.gemini', 'antigravity-ide'),
+        );
+      });
+      if (savedHome === undefined) delete process.env.HOME;
+      else process.env.HOME = savedHome;
+      if (savedUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = savedUserProfile;
+    } finally {
+      cleanup(home);
+    }
   });
 });
 

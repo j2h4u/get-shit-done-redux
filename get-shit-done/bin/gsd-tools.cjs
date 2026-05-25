@@ -419,6 +419,13 @@ async function main() {
 
   let command = args[0];
 
+  // Accept `query` meta-prefix parity with `gsd-sdk query ...`.
+  // Workflows may call `node gsd-tools.cjs query <command>` directly.
+  if (command === 'query') {
+    args.shift();
+    command = args[0];
+  }
+
   // #3243: accept dotted canonical form (e.g. `state.update`) as well as the
   // spaced form (`state update`). Workflow files and stale SDK binaries pass
   // the dotted canonical form directly; any caller that bypasses the SDK
@@ -507,38 +514,19 @@ async function main() {
     cwd = findProjectRoot(cwd);
   }
 
-  // When --pick is active, intercept stdout to extract the requested field.
+  // When --pick is active, capture stdout and extract the requested field.
   if (pickField) {
-    const origWriteSync = fs.writeSync;
-    let captured = '';
-    fs.writeSync = function (fd, data, ...rest) {
-      if (fd === 1) {
-        captured += String(data);
-        return;
-      }
-      return origWriteSync.call(fs, fd, data, ...rest);
-    };
-    const cleanup = () => {
-      fs.writeSync = origWriteSync;
-      let jsonStr = captured;
-      if (jsonStr.startsWith('@file:')) {
-        jsonStr = fs.readFileSync(jsonStr.slice(6), 'utf-8');
-      }
-      try {
-        const obj = JSON.parse(jsonStr);
-        const value = extractField(obj, pickField);
-        const result = value === null || value === undefined ? '' : String(value);
-        origWriteSync.call(fs, 1, result);
-      } catch {
-        origWriteSync.call(fs, 1, captured);
-      }
-    };
-    try {
+    const captured = await captureStdoutSyncWrites(async () => {
       await runCommand(command, args, cwd, raw, defaultValue, originalCommand);
-      cleanup();
-    } catch (e) {
-      fs.writeSync = origWriteSync;
-      throw e;
+    });
+    const resolved = resolveAtFileOutput(captured);
+    try {
+      const obj = JSON.parse(resolved);
+      const value = extractField(obj, pickField);
+      const result = value === null || value === undefined ? '' : String(value);
+      fs.writeSync(1, result);
+    } catch {
+      fs.writeSync(1, captured);
     }
     return;
   }
@@ -548,24 +536,49 @@ async function main() {
   // already resolves this, but the normal path wrote @file: to stdout, forcing
   // every workflow to have a bash-specific `if [[ "$INIT" == @file:* ]]` check
   // that breaks on PowerShell and other non-bash shells.
-  const origWriteSync2 = fs.writeSync;
-  let captured = '';
-  fs.writeSync = function (fd, data, ...rest) {
-    if (fd === 1) {
-      captured += String(data);
-      return;
-    }
-    return origWriteSync2.call(fs, fd, data, ...rest);
-  };
-  try {
+  const captured = await captureStdoutSyncWrites(async () => {
     await runCommand(command, args, cwd, raw, defaultValue, originalCommand);
-  } finally {
-    fs.writeSync = origWriteSync2;
-  }
-  if (captured.startsWith('@file:')) {
-    captured = fs.readFileSync(captured.slice(6), 'utf-8');
-  }
-  origWriteSync2.call(fs, 1, captured);
+  });
+  fs.writeSync(1, resolveAtFileOutput(captured));
+}
+
+function captureStdoutSyncWrites(run) {
+  const originalWriteSync = fs.writeSync;
+  let captured = '';
+
+  fs.writeSync = function patchedWriteSync(fd, data, ...rest) {
+    if (fd === 1) {
+      if (Buffer.isBuffer(data)) {
+        captured += data.toString('utf-8');
+        return data.length;
+      }
+      const text = String(data);
+      captured += text;
+      let encoding = 'utf-8';
+      if (typeof rest[1] === 'string') encoding = rest[1];
+      return Buffer.byteLength(text, encoding);
+    }
+    return originalWriteSync.call(fs, fd, data, ...rest);
+  };
+
+  const restore = () => {
+    fs.writeSync = originalWriteSync;
+  };
+
+  return Promise.resolve()
+    .then(() => run())
+    .then(() => {
+      restore();
+      return captured;
+    }, (err) => {
+      restore();
+      throw err;
+    });
+}
+
+function resolveAtFileOutput(captured) {
+  if (!captured.startsWith('@file:')) return captured;
+  return fs.readFileSync(captured.slice(6), 'utf-8');
 }
 
 /**
@@ -758,19 +771,11 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
     }
 
     case 'current-timestamp': {
-      // Phase 6 (#3575): dispatch via SDK executeForCjs when available.
-      // SDK handler: currentTimestamp in sdk/src/query/utils.ts.
-      const handled = _dispatchNonFamily({
-        registryCommand: 'current-timestamp',
-        registryArgs: args.slice(1),
-        legacyCommand: 'current-timestamp',
-        legacyArgs: args.slice(1),
-        cwd,
-        raw,
-        error,
-        output: core.output,
-      });
-      if (!handled) commands.cmdCurrentTimestamp(args[1] || 'full', raw);
+      // Keep this command on the CJS fast path.
+      // Rationale: it is a pure local formatter and avoids SDK bridge startup
+      // in tight subprocess loops where Windows CI has shown intermittent
+      // native crashes (0xC0000005 / 3221225477).
+      commands.cmdCurrentTimestamp(args[1] || 'full', raw);
       break;
     }
 
