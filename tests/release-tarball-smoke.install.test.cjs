@@ -150,30 +150,11 @@ describe('release-tarball-smoke', () => {
     assert.ok(typeof result.details.path === 'string' && result.details.path.length > 0);
   });
 
-  // ── Test E — SDK binary callable ──────────────────────────────────────────
-  // Verifies that `gsd-sdk query state.json` exits 0 and returns parseable JSON.
-  // This is the primary guard for SDK_BINARY_NOT_CALLABLE regressions.
-  test('E: sdk binary callable — gsd-sdk query produces parseable JSON', () => {
-    const result = runSmoke({
-      tarballPath,
-      installPrefix,
-      expectedVersion: pkg.version,
-      fixtureDir,
-      lifecycleCommands: [], // skip lifecycle checks; isolate SDK check
-      npmEnv: isolatedNpmEnv(),
-    });
-
-    // If the binary can't be called, code would be SDK_BINARY_NOT_CALLABLE
-    assert.notEqual(result.code, SMOKE.SDK_BINARY_NOT_CALLABLE);
-    assert.equal(result.details.sdkQueryParsed, true);
-  });
-
-  // ── Test F — workflow-body checks run (informational) ─────────────────────
+  // ── Test E — workflow-body checks run (informational) ─────────────────────
   // Asserts that the workflow-body scanning machinery ran (structural assertion).
-  // Does NOT assert colonLeakCount or missingFallbackCount are zero — they will
-  // be non-zero against current main per #3668 and the /gsd: leak backlog.
-  // When those issues are fixed, this test continues to pass unchanged.
-  test('F: workflow-body checks run — scan counts are present integers', () => {
+  // Does NOT assert colonLeakCount is zero — when those issues are fixed, this
+  // test continues to pass unchanged.
+  test('E: workflow-body checks run — scan counts are present integers', () => {
     const result = runSmoke({
       tarballPath,
       installPrefix,
@@ -191,10 +172,6 @@ describe('release-tarball-smoke', () => {
     assert.ok(
       Number.isInteger(result.details.colonLeakCount),
       `expected colonLeakCount to be an integer, got ${result.details.colonLeakCount}`,
-    );
-    assert.ok(
-      Number.isInteger(result.details.missingFallbackCount),
-      `expected missingFallbackCount to be an integer, got ${result.details.missingFallbackCount}`,
     );
   });
 });

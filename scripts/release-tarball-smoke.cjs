@@ -7,8 +7,6 @@
  * Guards against the class of bugs that can't be caught by working-tree tests:
  *   - #3684: maskIfSecret import/export mismatch shipped in v1.42.3 (runtime
  *     crash on installed package, invisible to unit tests)
- *   - #3668: 75/78 workflows call bare `gsd-sdk` without fallback; --local users
- *     see `command not found`
  *
  * Strategy: pack the working tree, install into a temp prefix, invoke the
  * installed binary, assert the version matches package.json. Exercises the
@@ -34,15 +32,11 @@
  *   in fixtureDir to verify the installer is callable (INIT_FAILED on crash).
  *   Non-interactive: --local --claude flags skip all prompts.
  *
- * Workflow-body checks (Cycle 3 — informational until #3668 is fixed):
- *   - Calls `gsd-sdk "query" state.json --project-dir <fixtureDir>` to verify
- *     the SDK binary is callable and produces parseable JSON (SDK_BINARY_NOT_CALLABLE).
- *   - Scans all installed get-shit-done/workflows/*.md for:
- *     (a) /gsd:<known-cmd> colon-namespace leaks (WORKFLOW_BODY_COLON_LEAK)
- *     (b) bare `gsd-sdk` query invocations in shell fences without a `command -v gsd-sdk`
- *         guard in the same fence (WORKFLOW_MISSING_SDK_FALLBACK — #3668).
- *   Both checks populate result.details with counters but do NOT return a failure
- *   code by default; they are informational until the upstream fixes land.
+ * Workflow-body checks (Cycle 3 — informational):
+ *   - Scans all installed get-shit-done/workflows/*.md for /gsd:<known-cmd>
+ *     colon-namespace leaks (WORKFLOW_BODY_COLON_LEAK).
+ *   This check populates result.details with counters but does NOT return a
+ *   failure code by default; it is informational until enforcement is enabled.
  */
 
 'use strict';
@@ -67,10 +61,8 @@ const SMOKE = Object.freeze({
   COMMAND_FILE_MISSING: 'command_file_missing',
   WORKFLOW_FILE_MISSING: 'workflow_file_missing',
   INIT_FAILED: 'init_failed',
-  // Cycle 3 codes
-  SDK_BINARY_NOT_CALLABLE: 'sdk_binary_not_callable',
+  // Cycle 3 code
   WORKFLOW_BODY_COLON_LEAK: 'workflow_body_colon_leak',
-  WORKFLOW_MISSING_SDK_FALLBACK: 'workflow_missing_sdk_fallback',
 });
 
 // ---------------------------------------------------------------------------
@@ -90,16 +82,16 @@ function pkgRoot(installPrefix) {
 }
 
 /**
- * Locate the installed gsd-sdk binary (symlink in <prefix>/bin/).
+ * Locate the installed gsd-tools binary (symlink in <prefix>/bin/).
  */
-function findGsdSdkBin(installPrefix) {
+function findGsdToolsBin(installPrefix) {
   const binDir = process.platform === 'win32'
     ? path.join(installPrefix, 'node_modules', '.bin')
     : path.join(installPrefix, 'bin');
 
   const candidates = process.platform === 'win32'
-    ? [path.join(binDir, 'gsd-sdk.cmd'), path.join(binDir, 'gsd-sdk')]
-    : [path.join(binDir, 'gsd-sdk')];
+    ? [path.join(binDir, 'gsd-tools.cmd'), path.join(binDir, 'gsd-tools')]
+    : [path.join(binDir, 'gsd-tools')];
 
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
@@ -210,66 +202,6 @@ function scanWorkflowColonLeak(filePath, cmdNames) {
   return null;
 }
 
-/**
- * Scan a single workflow .md file for bare `gsd-sdk` query invocations inside
- * shell fences that lack a `command -v gsd-sdk` guard in the same fence.
- *
- * Structured check: walks lines, tracks open/close shell fences (```bash /
- * ```sh / ``` alone), collects `gsd-sdk` query lines and the fence's guard
- * state, then emits findings per-fence.
- *
- * Returns the first unguarded { line, lineNumber } or null.
- */
-function scanWorkflowMissingSdkFallback(filePath) {
-  const content = fs.readFileSync(filePath, 'utf-8');
-  const lines = content.split(/\r?\n/);
-
-  const FENCE_OPEN = /^```(?:bash|sh)?\s*$/;
-  const FENCE_CLOSE = /^```\s*$/;
-  const SDK_QUERY = /\bgsd-sdk\s+query\b/;
-  const COMMAND_V = /\bcommand\s+-v\s+gsd-sdk\b/;
-
-  let inFence = false;
-  let fenceHasGuard = false;
-  let firstSdkQueryLineInFence = null;
-  let firstSdkQueryLineNumInFence = null;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    if (!inFence) {
-      if (FENCE_OPEN.test(trimmed)) {
-        inFence = true;
-        fenceHasGuard = false;
-        firstSdkQueryLineInFence = null;
-        firstSdkQueryLineNumInFence = null;
-      }
-    } else {
-      if (FENCE_CLOSE.test(trimmed)) {
-        // Closing the fence — check if there were bare sdk query calls without a guard
-        if (firstSdkQueryLineInFence !== null && !fenceHasGuard) {
-          return { line: firstSdkQueryLineNumInFence, content: firstSdkQueryLineInFence.trim() };
-        }
-        inFence = false;
-        fenceHasGuard = false;
-        firstSdkQueryLineInFence = null;
-        firstSdkQueryLineNumInFence = null;
-      } else {
-        if (COMMAND_V.test(line)) {
-          fenceHasGuard = true;
-        }
-        if (SDK_QUERY.test(line) && firstSdkQueryLineInFence === null) {
-          firstSdkQueryLineInFence = line;
-          firstSdkQueryLineNumInFence = i + 1;
-        }
-      }
-    }
-  }
-
-  return null;
-}
-
 // ---------------------------------------------------------------------------
 // Pure function: runSmoke
 // ---------------------------------------------------------------------------
@@ -330,8 +262,8 @@ function runSmoke({
     };
   }
 
-  // --- Locate the installed gsd-sdk binary ---------------------------------
-  const actualBin = findGsdSdkBin(installPrefix);
+  // --- Locate the installed gsd-tools binary --------------------------------
+  const actualBin = findGsdToolsBin(installPrefix);
 
   if (!actualBin) {
     const binDir = process.platform === 'win32'
@@ -343,12 +275,12 @@ function runSmoke({
     };
   }
 
-  // --- Invoke `gsd-sdk --version` ------------------------------------------
+  // --- Invoke `gsd-tools --help` to assert the shipped binary is callable ---
   // Use effectiveNpmEnv so the installed binary sees an isolated HOME on Docker
   // hosts where HOME may be unwritable (same isolation as the npm install). (#131)
   const versionResult = spawnSync(
     process.execPath,
-    [actualBin, '--version'],
+    [actualBin, '--help'],
     { encoding: 'utf-8', timeout: CHILD_TIMEOUT_MS, env: effectiveNpmEnv },
   );
 
@@ -364,14 +296,14 @@ function runSmoke({
     };
   }
 
-  // Output format: "gsd-sdk v1.50.0-canary.0\n"
-  const rawOutput = (versionResult.stdout || '').trim();
-  const versionMatch = rawOutput.match(/v(.+)$/);
-  const installedVersion = versionMatch ? versionMatch[1] : rawOutput;
+  // Source of truth for shipped version is the installed package.json.
+  const installedPkgPath = path.join(pkgRoot(installPrefix), 'package.json');
+  const installedPkg = JSON.parse(fs.readFileSync(installedPkgPath, 'utf-8'));
+  const installedVersion = String(installedPkg.version || '').trim();
 
   details.version = installedVersion;
-  details.rawVersionOutput = rawOutput;
   details.bin = actualBin;
+  details.installedPackageJson = installedPkgPath;
 
   if (installedVersion !== expectedVersion) {
     return {
@@ -391,7 +323,6 @@ function runSmoke({
   // --- Run init if requested -----------------------------------------------
   if (shouldRunInit && fixtureDir) {
     const installerBin = findInstallerBin(installPrefix);
-
     if (!installerBin) {
       return {
         code: SMOKE.INIT_FAILED,
@@ -504,53 +435,8 @@ function runSmoke({
   details.lifecycleResolved = lifecycleResolved;
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Cycle 3: SDK binary callable + workflow-body validation (informational)
+  // Cycle 3: workflow-body validation (informational)
   // ─────────────────────────────────────────────────────────────────────────
-
-  // --- Verify `gsd-sdk` query is callable and returns parseable JSON -------
-  // Use effectiveNpmEnv so the installed binary sees an isolated HOME on Docker
-  // hosts where HOME may be unwritable (same isolation as the npm install). (#131)
-  const sdkQueryDir = fixtureDir || os.tmpdir();
-  const sdkQueryResult = spawnSync(
-    process.execPath,
-    [actualBin, 'query', 'state.json', '--project-dir', sdkQueryDir],
-    { encoding: 'utf-8', timeout: CHILD_TIMEOUT_MS, env: effectiveNpmEnv },
-  );
-
-  if (sdkQueryResult.status !== 0) {
-    return {
-      code: SMOKE.SDK_BINARY_NOT_CALLABLE,
-      details: {
-        ...details,
-        sdkBin: actualBin,
-        sdkQueryStderr: sdkQueryResult.stderr,
-        sdkQueryStdout: sdkQueryResult.stdout,
-      },
-    };
-  }
-
-  let sdkQueryParsed = false;
-  try {
-    JSON.parse(sdkQueryResult.stdout);
-    sdkQueryParsed = true;
-  } catch {
-    // leave sdkQueryParsed = false
-  }
-
-  if (!sdkQueryParsed) {
-    return {
-      code: SMOKE.SDK_BINARY_NOT_CALLABLE,
-      details: {
-        ...details,
-        sdkBin: actualBin,
-        reason: 'gsd-sdk query-state output is not valid JSON',
-        sdkQueryStdout: sdkQueryResult.stdout,
-      },
-    };
-  }
-
-  details.sdkQueryResult = sdkQueryResult.stdout;
-  details.sdkQueryParsed = true;
 
   // --- Workflow-body checks (informational — #3668 not yet fixed) ----------
   const workflowsDir = path.join(pkg, 'get-shit-done', 'workflows');
@@ -558,10 +444,8 @@ function runSmoke({
 
   let workflowsScanned = 0;
   let colonLeakCount = 0;
-  let missingFallbackCount = 0;
-  // Store first finding per check type (for future enforcement mode)
+  // Store first finding for potential future enforcement mode.
   let firstColonLeak = null;
-  let firstMissingFallback = null;
 
   if (fs.existsSync(workflowsDir)) {
     // Collect all .md files (flat only — subdirs contain sub-workflows that
@@ -580,26 +464,15 @@ function runSmoke({
         }
       }
 
-      const missingFallback = scanWorkflowMissingSdkFallback(filePath);
-      if (missingFallback) {
-        missingFallbackCount++;
-        if (!firstMissingFallback) {
-          firstMissingFallback = { file: filePath, line: missingFallback.line };
-        }
-      }
     }
   }
 
   details.workflowsScanned = workflowsScanned;
   details.colonLeakCount = colonLeakCount;
-  details.missingFallbackCount = missingFallbackCount;
   if (firstColonLeak) details.firstColonLeak = firstColonLeak;
-  if (firstMissingFallback) details.firstMissingFallback = firstMissingFallback;
 
-  // NOTE: colonLeakCount and missingFallbackCount are informational here.
-  // They will be non-zero against current main per #3668 and the /gsd: leak
-  // backlog. Once those issues are fixed, a future enforcement mode can be
-  // enabled (e.g. SMOKE_ENFORCE_WORKFLOW_BODY=1) to fail here.
+  // NOTE: colonLeakCount is informational here. Once the backlog is fixed,
+  // a future enforcement mode can fail on non-zero counts.
 
   return { code: SMOKE.OK, details };
 }

@@ -40,6 +40,7 @@ const args = process.argv.slice(2);
 let ROOT = path.resolve(__dirname, '..');
 let CJS_DIR = null;          // resolved below
 let SDK_SRC = null;          // resolved below
+let SDK_SRC_EXPLICIT = false;
 let ALLOWLIST_OVERRIDE = null; // resolved below
 let WARN_ALL = false;
 let JSON_OUTPUT = false;
@@ -51,6 +52,7 @@ for (let i = 0; i < args.length; i++) {
     CJS_DIR = path.resolve(args[++i]);
   } else if (args[i] === '--sdk-src' && args[i + 1]) {
     SDK_SRC = path.resolve(args[++i]);
+    SDK_SRC_EXPLICIT = true;
   } else if (args[i] === '--allowlist' && args[i + 1]) {
     ALLOWLIST_OVERRIDE = path.resolve(args[++i]);
   } else if (args[i] === '--warn-all') {
@@ -210,15 +212,34 @@ function main() {
     process.exit(1);
   }
   if (!fs.existsSync(SDK_SRC)) {
+    // SDK tree was retired in ADR-0174 Phase 5.2. In default repo mode this
+    // lint becomes a no-op success; explicit --sdk-src remains fail-loud.
+    if (SDK_SRC_EXPLICIT) {
+      if (JSON_OUTPUT) {
+        emitJson({ ok: false, reason: 'sdk_src_missing', path: SDK_SRC });
+      } else {
+        process.stderr.write(
+          `lint-shared-module-handsync: SDK src dir not found: ${SDK_SRC}\n` +
+            `  Pass --root <repo-root> or --sdk-src <path> to override.\n`
+        );
+      }
+      process.exit(1);
+    }
+
     if (JSON_OUTPUT) {
-      emitJson({ ok: false, reason: 'sdk_src_missing', path: SDK_SRC });
+      emitJson({
+        ok: true,
+        reason: 'sdk_retired',
+        cooperatingCount: 0,
+        backlogCount: 0,
+        warnings: [],
+      });
     } else {
-      process.stderr.write(
-        `lint-shared-module-handsync: SDK src dir not found: ${SDK_SRC}\n` +
-          `  Pass --root <repo-root> or --sdk-src <path> to override.\n`
+      process.stdout.write(
+        'ok lint-shared-module-handsync: SDK source tree retired; no hand-sync pairs to lint.\n'
       );
     }
-    process.exit(1);
+    process.exit(0);
   }
 
   const sdkIndex = buildSdkIndex(SDK_SRC);

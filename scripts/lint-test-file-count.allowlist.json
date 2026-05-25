@@ -20,6 +20,7 @@
     "intel":                  { "current": 4,  "issue": "TBD" },
     "mvp":                    { "current": 4,  "issue": "TBD" },
     "install-profiles":       { "current": 4,  "issue": "TBD" },
+    "audit":                  { "current": 4,  "issue": "192" },
     "audit-open":             { "current": 3,  "issue": "TBD" },
     "config-schema":          { "current": 3,  "issue": "TBD" },
     "profile":                { "current": 3,  "issue": "TBD" },

@@ -61,7 +61,7 @@ function loadShipPrefixes(pkgPath) {
 // hotfix run (exactly what happened on v1.42.3 — production fix(3562) was
 // picked, the bundled test-fixture correction in commit 08848df8 was not).
 // Combined with the `test:` prefix being added to the candidate-loop regex
-// in release-sdk.yml, this lets `test(####):` fixture-alignment commits be
+// in hotfix.yml, this lets `test(####):` fixture-alignment commits be
 // cherry-picked alongside their production counterparts.
 function isCiGating(diffPath) {
   if (diffPath.startsWith('tests/')) return true;

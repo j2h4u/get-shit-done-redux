@@ -106,13 +106,20 @@ describe('lint-shared-module-handsync: current repo tree', () => {
     assert.strictEqual(status, 0);
     assert.ok(payload, 'expected JSON payload on stdout');
     assert.strictEqual(payload.ok, true);
+    assert.ok(
+      payload.reason === undefined || payload.reason === 'sdk_retired',
+      `unexpected success reason: ${payload.reason}`
+    );
   });
 
-  test('reports cooperating sibling count and zero unauthorized pairs', () => {
+  test('reports numeric counts when lint runs or short-circuits on retired SDK tree', () => {
     const { payload } = runLintJson();
     assert.ok(payload);
     assert.strictEqual(typeof payload.cooperatingCount, 'number');
-    assert.ok(payload.cooperatingCount > 0, 'expected at least one cooperating sibling');
+    assert.strictEqual(typeof payload.backlogCount, 'number');
+    if (payload.reason !== 'sdk_retired') {
+      assert.ok(payload.cooperatingCount > 0, 'expected at least one cooperating sibling');
+    }
     // No errors field on success — only warnings (backlog) may be present
     assert.strictEqual(payload.ok, true);
   });
