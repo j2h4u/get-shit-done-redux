@@ -305,6 +305,32 @@ function getDirName(runtime) {
   return '.claude';
 }
 
+function getPrimaryRuntimeConfigEnvVar(runtime) {
+  if (runtime === 'opencode') return 'OPENCODE_CONFIG_DIR';
+  if (runtime === 'gemini') return 'GEMINI_CONFIG_DIR';
+  if (runtime === 'kilo') return 'KILO_CONFIG_DIR';
+  if (runtime === 'codex') return 'CODEX_HOME';
+  if (runtime === 'copilot') return 'COPILOT_CONFIG_DIR';
+  if (runtime === 'antigravity') return 'ANTIGRAVITY_CONFIG_DIR';
+  if (runtime === 'cursor') return 'CURSOR_CONFIG_DIR';
+  if (runtime === 'windsurf') return 'WINDSURF_CONFIG_DIR';
+  if (runtime === 'augment') return 'AUGMENT_CONFIG_DIR';
+  if (runtime === 'trae') return 'TRAE_CONFIG_DIR';
+  if (runtime === 'qwen') return 'QWEN_CONFIG_DIR';
+  if (runtime === 'hermes') return 'HERMES_HOME';
+  if (runtime === 'codebuddy') return 'CODEBUDDY_CONFIG_DIR';
+  if (runtime === 'cline') return 'CLINE_CONFIG_DIR';
+  return 'CLAUDE_CONFIG_DIR';
+}
+
+function rewriteRuntimeConfigEnvVar(content, runtime) {
+  const envVar = getPrimaryRuntimeConfigEnvVar(runtime);
+  if (envVar === 'CLAUDE_CONFIG_DIR') {
+    return content;
+  }
+  return content.replace(/\bCLAUDE_CONFIG_DIR\b/g, envVar);
+}
+
 /**
  * Get the config directory path relative to home directory for a runtime
  * Used for templating hooks that use path.join(homeDir, '<configDir>', ...)
@@ -2570,6 +2596,9 @@ function convertClaudeToCodexMarkdown(content) {
   converted = converted.replace(/\$HOME\/\.claude\//g, '$HOME/.codex/');
   converted = converted.replace(/~\/\.claude\//g, '~/.codex/');
   converted = converted.replace(/\.\/\.claude\//g, './.codex/');
+  converted = converted.replace(/\$HOME\/\.claude\b/g, '$HOME/.codex');
+  converted = converted.replace(/~\/\.claude\b/g, '~/.codex');
+  converted = converted.replace(/\.\/\.claude\b/g, './.codex');
   // Bare/project-relative .claude/... references (#2639). Covers strings like
   // "check `.claude/skills/`" where there is no ~/, $HOME/, or ./ anchor.
   // Negative lookbehind prevents double-replacing already-anchored forms and
@@ -2648,7 +2677,7 @@ Result parsing:
 }
 
 function convertClaudeCommandToCodexSkill(content, skillName) {
-  const converted = convertClaudeToCodexMarkdown(content);
+  const converted = rewriteRuntimeConfigEnvVar(convertClaudeToCodexMarkdown(content), 'codex');
   const { frontmatter, body } = extractFrontmatterAndBody(converted);
   let description = `Run GSD workflow ${skillName}.`;
   if (frontmatter) {
@@ -5659,6 +5688,7 @@ function copyFlattenedCommands(srcDir, destDir, prefix, pathPrefix, runtime) {
       content = content.replace(localClaudeRegex, `./${getDirName(runtime)}/`);
       content = content.replace(opencodeDirRegex, pathPrefix);
       content = content.replace(kiloDirRegex, pathPrefix);
+      content = rewriteRuntimeConfigEnvVar(content, runtime);
       content = processAttribution(content, getCommitAttribution(runtime));
       content = runtime === 'kilo'
         ? convertClaudeToKiloFrontmatter(content)
@@ -5918,6 +5948,9 @@ function _applyRuntimeRewrites(content, runtime, pathPrefix) {
       content = content.replace(/~\/\.claude\//g, pathPrefix);
       content = content.replace(/\$HOME\/\.claude\//g, pathPrefix);
       content = content.replace(/\.\/\.claude\//g, `./${dirName}/`);
+      content = content.replace(/~\/\.claude\b/g, normalizedPathPrefix);
+      content = content.replace(/\$HOME\/\.claude\b/g, normalizedPathPrefix);
+      content = content.replace(/\.\/\.claude\b/g, `./${dirName}`);
       content = content.replace(/~\/\.codex\//g, pathPrefix);
       content = processAttribution(content, getCommitAttribution(runtime));
       break;
@@ -5926,6 +5959,9 @@ function _applyRuntimeRewrites(content, runtime, pathPrefix) {
       content = content.replace(/~\/\.claude\//g, pathPrefix);
       content = content.replace(/\$HOME\/\.claude\//g, pathPrefix);
       content = content.replace(/\.\/\.claude\//g, `./${dirName}/`);
+      content = content.replace(/~\/\.claude\b/g, normalizedPathPrefix);
+      content = content.replace(/\$HOME\/\.claude\b/g, normalizedPathPrefix);
+      content = content.replace(/\.\/\.claude\b/g, `./${dirName}`);
       content = content.replace(/~\/\.cursor\//g, pathPrefix);
       content = processAttribution(content, getCommitAttribution(runtime));
       break;
@@ -5934,6 +5970,9 @@ function _applyRuntimeRewrites(content, runtime, pathPrefix) {
       content = content.replace(/~\/\.claude\//g, pathPrefix);
       content = content.replace(/\$HOME\/\.claude\//g, pathPrefix);
       content = content.replace(/\.\/\.claude\//g, `./${dirName}/`);
+      content = content.replace(/~\/\.claude\b/g, normalizedPathPrefix);
+      content = content.replace(/\$HOME\/\.claude\b/g, normalizedPathPrefix);
+      content = content.replace(/\.\/\.claude\b/g, `./${dirName}`);
       content = content.replace(/~\/\.codeium\/windsurf\//g, pathPrefix);
       content = processAttribution(content, getCommitAttribution(runtime));
       break;
@@ -5942,6 +5981,9 @@ function _applyRuntimeRewrites(content, runtime, pathPrefix) {
       content = content.replace(/~\/\.claude\//g, pathPrefix);
       content = content.replace(/\$HOME\/\.claude\//g, pathPrefix);
       content = content.replace(/\.\/\.claude\//g, `./${dirName}/`);
+      content = content.replace(/~\/\.claude\b/g, normalizedPathPrefix);
+      content = content.replace(/\$HOME\/\.claude\b/g, normalizedPathPrefix);
+      content = content.replace(/\.\/\.claude\b/g, `./${dirName}`);
       content = content.replace(/~\/\.augment\//g, pathPrefix);
       content = processAttribution(content, getCommitAttribution(runtime));
       break;
@@ -6023,7 +6065,7 @@ function _applyRuntimeRewrites(content, runtime, pathPrefix) {
       break;
   }
 
-  return content;
+  return rewriteRuntimeConfigEnvVar(content, runtime);
 }
 
 /**
@@ -6417,12 +6459,16 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, runtime, isCommand
       // Skip generic replacement for Copilot — convertClaudeToCopilotContent handles all paths
       let content = fs.readFileSync(srcPath, 'utf8');
       if (!isCopilot && !isAntigravity) {
+        const normalizedPathPrefix = pathPrefix.replace(/\/$/, '');
         const globalClaudeRegex = /~\/\.claude\//g;
         const globalClaudeHomeRegex = /\$HOME\/\.claude\//g;
         const localClaudeRegex = /\.\/\.claude\//g;
         content = content.replace(globalClaudeRegex, pathPrefix);
         content = content.replace(globalClaudeHomeRegex, pathPrefix);
         content = content.replace(localClaudeRegex, `./${dirName}/`);
+        content = content.replace(/~\/\.claude\b/g, normalizedPathPrefix);
+        content = content.replace(/\$HOME\/\.claude\b/g, normalizedPathPrefix);
+        content = content.replace(/\.\/\.claude\b/g, `./${dirName}`);
         content = content.replace(/~\/\.qwen\//g, pathPrefix);
         content = content.replace(/\$HOME\/\.qwen\//g, pathPrefix);
         content = content.replace(/\.\/\.qwen\//g, `./${dirName}/`);
@@ -6430,6 +6476,7 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, runtime, isCommand
         content = content.replace(/\$HOME\/\.hermes\//g, pathPrefix);
         content = content.replace(/\.\/\.hermes\//g, `./${dirName}/`);
       }
+      content = rewriteRuntimeConfigEnvVar(content, runtime);
       content = processAttribution(content, getCommitAttribution(runtime));
 
       // #3683 — normalize /gsd:<cmd> → /gsd-<cmd> in any body passing through
@@ -7608,6 +7655,56 @@ function writeManifest(configDir, runtime = 'claude', options = {}) {
 
   fs.writeFileSync(path.join(configDir, MANIFEST_NAME), JSON.stringify(manifest, null, 2));
   return manifest;
+}
+
+function collectUnreplacedClaudePathRefs(targetDir) {
+  const leakedPaths = [];
+
+  function scanForLeakedPaths(dir) {
+    if (!fs.existsSync(dir)) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch (err) {
+      if (err.code === 'EPERM' || err.code === 'EACCES') {
+        return;
+      }
+      throw err;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === '.tmp') {
+          continue;
+        }
+        scanForLeakedPaths(fullPath);
+        continue;
+      }
+
+      if (!(entry.name.endsWith('.md') || entry.name.endsWith('.toml')) || entry.name === 'CHANGELOG.md') {
+        continue;
+      }
+
+      let content;
+      try {
+        content = fs.readFileSync(fullPath, 'utf8');
+      } catch (err) {
+        if (err.code === 'EPERM' || err.code === 'EACCES') {
+          continue;
+        }
+        throw err;
+      }
+
+      const matches = content.match(/(?:~|\$HOME)\/\.claude\b/g);
+      if (matches) {
+        leakedPaths.push({ file: fullPath.replace(targetDir + '/', ''), count: matches.length });
+      }
+    }
+  }
+
+  scanForLeakedPaths(targetDir);
+  return leakedPaths;
 }
 
 /**
@@ -8851,40 +8948,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
 
   // Verify no leaked .claude paths in non-Claude runtimes
   if (runtime !== 'claude') {
-    const leakedPaths = [];
-    function scanForLeakedPaths(dir) {
-      if (!fs.existsSync(dir)) return;
-      let entries;
-      try {
-        entries = fs.readdirSync(dir, { withFileTypes: true });
-      } catch (err) {
-        if (err.code === 'EPERM' || err.code === 'EACCES') {
-          return; // skip inaccessible directories
-        }
-        throw err;
-      }
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          scanForLeakedPaths(fullPath);
-        } else if ((entry.name.endsWith('.md') || entry.name.endsWith('.toml')) && entry.name !== 'CHANGELOG.md') {
-          let content;
-          try {
-            content = fs.readFileSync(fullPath, 'utf8');
-          } catch (err) {
-            if (err.code === 'EPERM' || err.code === 'EACCES') {
-              continue; // skip inaccessible files
-            }
-            throw err;
-          }
-          const matches = content.match(/(?:~|\$HOME)\/\.claude\b/g);
-          if (matches) {
-            leakedPaths.push({ file: fullPath.replace(targetDir + '/', ''), count: matches.length });
-          }
-        }
-      }
-    }
-    scanForLeakedPaths(targetDir);
+    const leakedPaths = collectUnreplacedClaudePathRefs(targetDir);
     if (leakedPaths.length > 0) {
       const totalLeaks = leakedPaths.reduce((sum, l) => sum + l.count, 0);
       console.warn(`\n  ${yellow}⚠${reset}  Found ${totalLeaks} unreplaced .claude path reference(s) in ${leakedPaths.length} file(s):`);
@@ -9179,7 +9243,10 @@ function install(isGlobal, runtime = 'claude', options = {}) {
       // user is never left with a Codex CLI that won't load.
       // Test seam: tests can inject `__codexSchemaValidator` to force the
       // validator to fail and exercise the restore-and-abort path.
-      const validatorFn = (typeof module !== 'undefined' && module.exports && module.exports.__codexSchemaValidator)
+      const hasInjectedValidator = typeof module !== 'undefined'
+        && module.exports
+        && Object.prototype.hasOwnProperty.call(module.exports, '__codexSchemaValidator');
+      const validatorFn = hasInjectedValidator
         ? module.exports.__codexSchemaValidator
         : validateCodexConfigSchema;
       const validation = validatorFn(configContent);
@@ -11400,6 +11467,7 @@ module.exports = {
     convertClaudeToCliineMarkdown,
     convertClaudeAgentToClineAgent,
     writeManifest,
+    collectUnreplacedClaudePathRefs,
     saveLocalPatches,
     reportLocalPatches,
     validateHookFields,

@@ -213,5 +213,15 @@ describe('Gemini Install (Behavioral)', () => {
       'installed plan-phase.toml prompt must contain at least one /gsd: reference');
     assert.doesNotMatch(parsed.prompt, /(?<![A-Za-z0-9./])\/gsd-plan-phase\b/,
       'installed plan-phase.toml prompt must not retain unconverted /gsd-plan-phase');
+
+    const surfaceToml = path.join(commandsDir, 'surface.toml');
+    assert.ok(fs.existsSync(surfaceToml), 'surface.toml must be installed');
+    const surface = fs.readFileSync(surfaceToml, 'utf8');
+    assert.doesNotMatch(surface, /(?:~|\$HOME)\/\.claude\b/,
+      'installed surface.toml must not leak Claude config paths');
+    assert.doesNotMatch(surface, /\bCLAUDE_CONFIG_DIR\b/,
+      'installed surface.toml must not leak Claude config env var');
+    assert.match(surface, /\bGEMINI_CONFIG_DIR\b/,
+      'installed surface.toml must use Gemini config env var');
   });
 });

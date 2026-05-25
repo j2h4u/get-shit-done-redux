@@ -152,6 +152,7 @@ function parseCallsAgents(content) {
  */
 function loadSkillsManifest(commandsDir) {
   const manifest = new Map();
+  if (typeof commandsDir !== 'string' || commandsDir.length === 0) return manifest;
   if (!fs.existsSync(commandsDir)) return manifest;
   const entries = fs.readdirSync(commandsDir, { withFileTypes: true });
   for (const entry of entries) {
