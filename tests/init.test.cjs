@@ -6,13 +6,14 @@ const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { runGsdTools, createTempProject, cleanup } = require('./helpers.cjs');
+const { runGsdTools, cleanup } = require('./helpers.cjs');
+const { createFixture, seedPhase } = require('./fixtures/index.cjs');
 
 describe('init commands', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = createTempProject();
+    tmpDir = createFixture();
   });
 
   afterEach(() => {
@@ -20,9 +21,9 @@ describe('init commands', () => {
   });
 
   test('init execute-phase returns file paths', () => {
-    const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
-    fs.mkdirSync(phaseDir, { recursive: true });
-    fs.writeFileSync(path.join(phaseDir, '03-01-PLAN.md'), '# Plan');
+    seedPhase(tmpDir, '03-api', {
+      '03-01-PLAN.md': '# Plan',
+    });
 
     const result = runGsdTools('init execute-phase 03', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
@@ -34,9 +35,9 @@ describe('init commands', () => {
   });
 
   test('init execute-phase respects model_overrides for executor_model', () => {
-    const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-foundation');
-    fs.mkdirSync(phaseDir, { recursive: true });
-    fs.writeFileSync(path.join(phaseDir, '01-01-PLAN.md'), '# Plan');
+    seedPhase(tmpDir, '01-foundation', {
+      '01-01-PLAN.md': '# Plan',
+    });
     fs.writeFileSync(path.join(tmpDir, '.planning', 'config.json'), JSON.stringify({
       model_profile: 'balanced',
       model_overrides: { 'gsd-executor': 'openai/o4-mini' },
@@ -51,9 +52,9 @@ describe('init commands', () => {
   });
 
   test('init execute-phase respects model_overrides when resolve_model_ids is omit', () => {
-    const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-foundation');
-    fs.mkdirSync(phaseDir, { recursive: true });
-    fs.writeFileSync(path.join(phaseDir, '01-01-PLAN.md'), '# Plan');
+    seedPhase(tmpDir, '01-foundation', {
+      '01-01-PLAN.md': '# Plan',
+    });
     fs.writeFileSync(path.join(tmpDir, '.planning', 'config.json'), JSON.stringify({
       resolve_model_ids: 'omit',
       model_overrides: { 'gsd-executor': 'openai/o4-mini' },
@@ -68,12 +69,12 @@ describe('init commands', () => {
   });
 
   test('init plan-phase returns file paths', () => {
-    const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
-    fs.mkdirSync(phaseDir, { recursive: true });
-    fs.writeFileSync(path.join(phaseDir, '03-CONTEXT.md'), '# Phase Context');
-    fs.writeFileSync(path.join(phaseDir, '03-RESEARCH.md'), '# Research Findings');
-    fs.writeFileSync(path.join(phaseDir, '03-VERIFICATION.md'), '# Verification');
-    fs.writeFileSync(path.join(phaseDir, '03-UAT.md'), '# UAT');
+    seedPhase(tmpDir, '03-api', {
+      '03-CONTEXT.md': '# Phase Context',
+      '03-RESEARCH.md': '# Research Findings',
+      '03-VERIFICATION.md': '# Verification',
+      '03-UAT.md': '# UAT',
+    });
 
     const result = runGsdTools('init plan-phase 03', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
@@ -121,12 +122,12 @@ describe('init commands', () => {
   });
 
   test('init phase-op returns core and optional phase file paths', () => {
-    const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
-    fs.mkdirSync(phaseDir, { recursive: true });
-    fs.writeFileSync(path.join(phaseDir, '03-CONTEXT.md'), '# Phase Context');
-    fs.writeFileSync(path.join(phaseDir, '03-RESEARCH.md'), '# Research');
-    fs.writeFileSync(path.join(phaseDir, '03-VERIFICATION.md'), '# Verification');
-    fs.writeFileSync(path.join(phaseDir, '03-UAT.md'), '# UAT');
+    seedPhase(tmpDir, '03-api', {
+      '03-CONTEXT.md': '# Phase Context',
+      '03-RESEARCH.md': '# Research',
+      '03-VERIFICATION.md': '# Verification',
+      '03-UAT.md': '# UAT',
+    });
 
     const result = runGsdTools('init phase-op 03', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
@@ -142,9 +143,9 @@ describe('init commands', () => {
   });
 
   test('init plan-phase detects has_reviews and reviews_path when REVIEWS.md exists', () => {
-    const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
-    fs.mkdirSync(phaseDir, { recursive: true });
-    fs.writeFileSync(path.join(phaseDir, '03-REVIEWS.md'), '# Cross-AI Reviews');
+    seedPhase(tmpDir, '03-api', {
+      '03-REVIEWS.md': '# Cross-AI Reviews',
+    });
 
     const result = runGsdTools('init plan-phase 03', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
@@ -155,8 +156,7 @@ describe('init commands', () => {
   });
 
   test('init plan-phase omits optional paths if files missing', () => {
-    const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
-    fs.mkdirSync(phaseDir, { recursive: true });
+    seedPhase(tmpDir, '03-api');
 
     const result = runGsdTools('init plan-phase 03', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
@@ -223,9 +223,9 @@ describe('init commands', () => {
   });
 
   test('init execute-phase extracts phase_req_ids from ROADMAP', () => {
-    const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
-    fs.mkdirSync(phaseDir, { recursive: true });
-    fs.writeFileSync(path.join(phaseDir, '03-01-PLAN.md'), '# Plan');
+    seedPhase(tmpDir, '03-api', {
+      '03-01-PLAN.md': '# Plan',
+    });
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
       `# Roadmap\n\n### Phase 3: API\n**Goal:** Build API\n**Requirements**: EX-01, EX-02\n**Plans:** 1 plans\n`
@@ -287,9 +287,9 @@ describe('init commands', () => {
     });
 
     test(`init execute-phase parses Requirements with ${variant.name}`, () => {
-      const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
-      fs.mkdirSync(phaseDir, { recursive: true });
-      fs.writeFileSync(path.join(phaseDir, '03-01-PLAN.md'), '# Plan');
+      seedPhase(tmpDir, '03-api', {
+        '03-01-PLAN.md': '# Plan',
+      });
       const roadmap = [
         '# Roadmap',
         '',
@@ -311,9 +311,9 @@ describe('init commands', () => {
   }
 
   test('init execute-phase returns null phase_req_ids when Requirements line is absent', () => {
-    const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
-    fs.mkdirSync(phaseDir, { recursive: true });
-    fs.writeFileSync(path.join(phaseDir, '03-01-PLAN.md'), '# Plan');
+    seedPhase(tmpDir, '03-api', {
+      '03-01-PLAN.md': '# Plan',
+    });
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
       `# Roadmap\n\n### Phase 3: API\n**Goal:** Build API\n**Plans:** 1 plans\n`
@@ -335,7 +335,7 @@ describe('init commands ROADMAP fallback when phase directory does not exist (#1
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = createTempProject();
+    tmpDir = createFixture();
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
       '# Roadmap\n\n### Phase 1: Foundation Setup\n**Goal:** Bootstrap project\n**Requirements**: R-01, R-02\n**Plans:** TBD\n'
@@ -395,9 +395,9 @@ describe('init commands ROADMAP fallback when phase directory does not exist (#1
   });
 
   test('init plan-phase prefers disk directory over ROADMAP fallback', () => {
-    const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-foundation-setup');
-    fs.mkdirSync(phaseDir, { recursive: true });
-    fs.writeFileSync(path.join(phaseDir, '01-01-PLAN.md'), '# Plan');
+    seedPhase(tmpDir, '01-foundation-setup', {
+      '01-01-PLAN.md': '# Plan',
+    });
 
     const result = runGsdTools('init plan-phase 1', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
@@ -418,7 +418,7 @@ describe('init commands ignore archived phases from prior milestones sharing a n
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = createTempProject();
+    tmpDir = createFixture();
     // Current milestone ROADMAP has Phase 2 but no disk directory yet
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
@@ -488,7 +488,7 @@ describe('init plan-phase zero-padded phase number (bug #2391)', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = createTempProject();
+    tmpDir = createFixture();
     // Current milestone ROADMAP has Phase 3 (unpadded heading)
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
@@ -548,7 +548,7 @@ describe('cmdInitTodos', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = createTempProject();
+    tmpDir = createFixture();
   });
 
   afterEach(() => {
@@ -674,7 +674,7 @@ describe('cmdInitMilestoneOp', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = createTempProject();
+    tmpDir = createFixture();
   });
 
   afterEach(() => {
@@ -771,7 +771,7 @@ describe('cmdInitPhaseOp fallback', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = createTempProject();
+    tmpDir = createFixture();
   });
 
   afterEach(() => {
@@ -779,10 +779,10 @@ describe('cmdInitPhaseOp fallback', () => {
   });
 
   test('normal path with existing directory', () => {
-    const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
-    fs.mkdirSync(phaseDir, { recursive: true });
-    fs.writeFileSync(path.join(phaseDir, '03-CONTEXT.md'), '# Context');
-    fs.writeFileSync(path.join(phaseDir, '03-01-PLAN.md'), '# Plan');
+    seedPhase(tmpDir, '03-api', {
+      '03-CONTEXT.md': '# Context',
+      '03-01-PLAN.md': '# Plan',
+    });
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
       '# Roadmap\n\n### Phase 3: API\n**Goal:** Build API\n**Plans:** 1 plans\n'
@@ -884,7 +884,7 @@ describe('cmdInitProgress', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = createTempProject();
+    tmpDir = createFixture();
   });
 
   afterEach(() => {
@@ -1008,7 +1008,7 @@ describe('cmdInitQuick', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = createTempProject();
+    tmpDir = createFixture();
   });
 
   afterEach(() => {
@@ -1126,7 +1126,7 @@ describe('cmdInitMapCodebase', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = createTempProject();
+    tmpDir = createFixture();
   });
 
   afterEach(() => {
@@ -1194,7 +1194,7 @@ describe('cmdInitNewProject', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = createTempProject();
+    tmpDir = createFixture();
   });
 
   afterEach(() => {
@@ -1335,7 +1335,7 @@ describe('cmdInitNewMilestone', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = createTempProject();
+    tmpDir = createFixture();
   });
 
   afterEach(() => {
@@ -1420,7 +1420,7 @@ describe('findProjectRoot integration via --cwd', () => {
   let projectRoot;
 
   beforeEach(() => {
-    projectRoot = createTempProject();
+    projectRoot = createFixture();
     // Add ROADMAP.md so init quick doesn't error
     fs.writeFileSync(
       path.join(projectRoot, '.planning', 'ROADMAP.md'),
@@ -1485,7 +1485,7 @@ describe('#2192: init plan-phase includes auto-advance config to prevent separat
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = createTempProject();
+    tmpDir = createFixture();
     fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-auth'), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
@@ -1552,7 +1552,7 @@ describe('withProjectRoot project identity', () => {
   let tmpDir;
 
   beforeEach(() => {
-    tmpDir = createTempProject();
+    tmpDir = createFixture();
   });
 
   afterEach(() => {
@@ -1610,7 +1610,7 @@ describe('withProjectRoot project identity', () => {
       path.join(tmpDir, '.planning', 'config.json'),
       JSON.stringify({ project_code: 'CK' })
     );
-    // Ensure no PROJECT.md exists (createTempProject doesn't create one)
+    // Ensure no PROJECT.md exists (createFixture doesn't create one)
     const projectMdPath = path.join(tmpDir, '.planning', 'PROJECT.md');
     if (fs.existsSync(projectMdPath)) fs.unlinkSync(projectMdPath);
 
