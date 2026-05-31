@@ -2,11 +2,21 @@
 // gsd-hook-version: {{GSD_VERSION}}
 // Claude Code Statusline - GSD Edition
 // Shows: model | current task (or GSD state) | directory | context usage
+//
+// Flags:
+//   --no-ctx    Suppress context progress bar (useful when compositing with
+//               another statusline that already shows context, e.g. OMCC)
+//   --no-model  Suppress model name
+//   --no-repo   Suppress repository/directory name
 
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { isSemverNewer } = require('../get-shit-done/bin/lib/semver-compare.cjs');
+
+const noCtx   = process.argv.includes('--no-ctx');
+const noModel = process.argv.includes('--no-model');
+const noRepo  = process.argv.includes('--no-repo');
 
 // --- Config + last-command readers ------------------------------------------
 
@@ -314,7 +324,7 @@ function runStatusline() {
       ? Math.min(100, (acw / totalCtx) * 100)
       : 16.5;
     let ctx = '';
-    if (remaining != null) {
+    if (!noCtx && remaining != null) {
       // Normalize: subtract buffer from remaining, scale to usable range
       const usableRemaining = Math.max(0, ((remaining - AUTO_COMPACT_BUFFER_PCT) / (100 - AUTO_COMPACT_BUFFER_PCT)) * 100);
       const used = Math.max(0, Math.min(100, Math.round(100 - usableRemaining)));
@@ -358,6 +368,21 @@ function runStatusline() {
       } else {
         ctx = ` \x1b[5;31m💀 ${bar} ${used}%\x1b[0m`;
       }
+    } else if (noCtx && remaining != null) {
+      // --no-ctx: still write bridge file for context-monitor hook, using
+      // the same raw CC-consistent usage metric as the visible statusline path.
+      const sessionSafe = session && !/[/\\]|\.\./.test(session);
+      if (sessionSafe) {
+        try {
+          const bridgePath = path.join(os.tmpdir(), `claude-ctx-${session}.json`);
+          fs.writeFileSync(bridgePath, JSON.stringify({
+            session_id: session,
+            remaining_percentage: remaining,
+            used_pct: Math.round(100 - remaining),
+            timestamp: Math.floor(Date.now() / 1000)
+          }));
+        } catch (e) {}
+      }
     }
 
     // Current task from todos
@@ -397,15 +422,16 @@ function runStatusline() {
     // GSD update available?
     // Check shared cache first (#1421), fall back to runtime-specific cache for
     // backward compatibility with older gsd-check-update.js versions.
-    let gsdUpdate = '';
+    let gsdUpdate = null;
     const sharedCacheFile = path.join(homeDir, '.cache', 'gsd', 'gsd-update-check.json');
     const legacyCacheFile = path.join(claudeDir, 'cache', 'gsd-update-check.json');
     const cacheFile = fs.existsSync(sharedCacheFile) ? sharedCacheFile : legacyCacheFile;
     if (fs.existsSync(cacheFile)) {
       try {
         const cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+        const parts = [];
         if (cache.update_available) {
-          gsdUpdate = '\x1b[33m⬆ /gsd:update\x1b[0m │ ';
+          parts.push('\x1b[33m⬆ /gsd:update\x1b[0m');
         }
         if (cache.stale_hooks && cache.stale_hooks.length > 0) {
           // If installed version is ahead of npm latest, this is a dev install.
@@ -417,11 +443,12 @@ function runStatusline() {
             isInstalledAheadOfLatest(cache.installed, cache.latest)
           );
           if (isDevInstall) {
-            gsdUpdate += '\x1b[33m⚠ dev install — re-run installer to sync hooks\x1b[0m │ ';
+            parts.push('\x1b[33m⚠ dev install — re-run installer to sync hooks\x1b[0m');
           } else {
-            gsdUpdate += '\x1b[31m⚠ stale hooks — run /gsd:update\x1b[0m │ ';
+            parts.push('\x1b[31m⚠ stale hooks — run /gsd:update\x1b[0m');
           }
         }
+        if (parts.length) gsdUpdate = parts.join(' │ ');
       } catch (e) {}
     }
 
@@ -453,7 +480,15 @@ function runStatusline() {
         ? `\x1b[2m${gsdStateStr}\x1b[0m`
         : null;
 
-    process.stdout.write(composeStatusline({ gsdUpdate, model, ctx, middle, dirname, lastCmdSuffix, position }));
+    process.stdout.write(composeStatusline({
+      gsdUpdate,
+      model: noModel ? null : model,
+      ctx,
+      middle,
+      dirname: noRepo ? null : dirname,
+      lastCmdSuffix,
+      position,
+    }));
   } catch (e) {
     // Silent fail - don't break statusline on parse errors
   }
@@ -467,10 +502,10 @@ function runStatusline() {
  *
  * @param {object} opts
  * @param {string} [opts.gsdUpdate='']      - leading update/stale-hooks warning (already formatted)
- * @param {string} opts.model               - model display name (plain text; dim styling applied here)
+ * @param {string|null} opts.model          - model display name (plain text; dim styling applied here)
  * @param {string} [opts.ctx='']            - context-window meter segment (empty string = absent)
  * @param {string|null} [opts.middle=null]  - middle segment (todo task or GSD state), null = absent
- * @param {string} opts.dirname             - project directory basename (dim styling applied here)
+ * @param {string|null} opts.dirname        - project directory basename (dim styling applied here)
  * @param {string} [opts.lastCmdSuffix='']  - last-command suffix, e.g. ' │ last: /foo'
  * @param {'end'|'front'} [opts.position='end']
  *   - 'end'   (default): ctx appended after dirname — preserved byte-for-byte
@@ -489,18 +524,18 @@ function composeStatusline({
   lastCmdSuffix = '',
   position = 'end',
 } = {}) {
-  const modelSeg = `\x1b[2m${model}\x1b[0m`;
-  const dirSeg = `\x1b[2m${dirname}\x1b[0m`;
+  const modelSeg = model ? `\x1b[2m${model}\x1b[0m` : null;
+  const dirSeg = dirname ? `\x1b[2m${dirname}\x1b[0m` : null;
+  const leading = [gsdUpdate, modelSeg].filter(Boolean).join(' │ ');
   // Coerce invalid values to 'end' (belt-and-suspenders; see JSDoc above)
   const pos = position === 'front' ? 'front' : 'end';
 
   if (pos === 'front') {
-    if (middle) return `${gsdUpdate}${modelSeg}${ctx} │ ${middle} │ ${dirSeg}${lastCmdSuffix}`;
-    return `${gsdUpdate}${modelSeg}${ctx} │ ${dirSeg}${lastCmdSuffix}`;
+    const head = leading ? `${leading}${ctx}` : ctx.trimStart();
+    return [head, middle, dirSeg].filter(Boolean).join(' │ ') + lastCmdSuffix;
   }
   // 'end' — preserved byte-for-byte relative to original inline templates
-  if (middle) return `${gsdUpdate}${modelSeg} │ ${middle} │ ${dirSeg}${ctx}${lastCmdSuffix}`;
-  return `${gsdUpdate}${modelSeg} │ ${dirSeg}${ctx}${lastCmdSuffix}`;
+  return [leading, middle, dirSeg].filter(Boolean).join(' │ ') + ctx + lastCmdSuffix;
 }
 
 function isInstalledAheadOfLatest(installed, latest) {
