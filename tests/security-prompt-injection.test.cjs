@@ -29,9 +29,9 @@
  * Seam scope per #3596:
  *   - hooks/gsd-prompt-guard.js          — stdin/stdout JSON contract
  *   - hooks/gsd-read-injection-scanner.js
- *   - get-shit-done/bin/lib/security.cjs      — sanitizer + validators
- *   - get-shit-done/bin/lib/workstream-name-policy.cjs
- *   - get-shit-done/bin/gsd-tools.cjs CLI     — full-stack contract
+ *   - gsd-core/bin/lib/security.cjs      — sanitizer + validators
+ *   - gsd-core/bin/lib/workstream-name-policy.cjs
+ *   - gsd-core/bin/gsd-tools.cjs CLI     — full-stack contract
  *
  * Anti-duplication: the existing `tests/security.test.cjs`,
  * `tests/security-scan.test.cjs`, `tests/prompt-injection-scan.test.cjs`,
@@ -96,12 +96,12 @@ const {
   validateShellArg,
   validatePhaseNumber,
   validateFieldName,
-} = require('../get-shit-done/bin/lib/security.cjs');
+} = require('../gsd-core/bin/lib/security.cjs');
 const {
   toWorkstreamSlug,
   hasInvalidPathSegment,
   isValidActiveWorkstreamName,
-} = require('../get-shit-done/bin/lib/workstream-name-policy.cjs');
+} = require('../gsd-core/bin/lib/workstream-name-policy.cjs');
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -643,7 +643,7 @@ describe('validatePath: hostile path values are rejected before write', () => {
     assert.strictEqual(r.safe, false,
       'a symlink whose target is outside the base must fail containment');
     // Cleanup the outside dir; the link itself is cleaned by cleanup(tmpDir).
-    fs.rmSync(outside, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+    cleanup(outside);
   });
 });
 
@@ -655,7 +655,7 @@ describe('validatePath: hostile path values are rejected before write', () => {
 
 const {
   MARKDOWN_LINK_PATTERNS,
-} = require('../get-shit-done/bin/lib/security.cjs');
+} = require('../gsd-core/bin/lib/security.cjs');
 
 describe('scanForInjection: MD-LINK-JS-SCHEME (javascript: URI)', () => {
   // Source: OWASP Cross-Site Scripting Prevention Cheat Sheet

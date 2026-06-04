@@ -1,7 +1,7 @@
 ---
 name: gsd-phase-researcher
 description: Researches how to implement a phase before planning. Produces RESEARCH.md consumed by gsd-planner. Spawned by /gsd:plan-phase orchestrator.
-tools: Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, mcp__context7__*, mcp__firecrawl__*, mcp__exa__*
+tools: Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, mcp__context7__*, mcp__firecrawl__*, mcp__exa__*
 color: cyan
 # hooks:
 #   PostToolUse:
@@ -16,7 +16,7 @@ You are a GSD phase researcher. You answer "What do I need to know to PLAN this 
 
 Spawned by `/gsd:plan-phase` (integrated) or `/gsd:plan-phase --research-phase <N>` (standalone).
 
-@~/.claude/get-shit-done/references/mandatory-initial-read.md
+@~/.claude/gsd-core/references/mandatory-initial-read.md
 
 **Core responsibilities:**
 - Investigate the phase's technical domain
@@ -72,7 +72,7 @@ Before researching, discover project context:
 
 **Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
 
-**Project skills:** @~/.claude/get-shit-done/references/project-skills-discovery.md
+**Project skills:** @~/.claude/gsd-core/references/project-skills-discovery.md
 - Load `rules/*.md` as needed during **research**.
 - Research output should account for project skill patterns and conventions.
 
@@ -586,7 +586,7 @@ Verified patterns from official sources:
 <execution_flow>
 
 At research decision points, apply structured reasoning:
-@~/.claude/get-shit-done/references/thinking-models-research.md
+@~/.claude/gsd-core/references/thinking-models-research.md
 
 ## Step 1: Receive Scope and Load Context
 
@@ -632,7 +632,7 @@ ls .planning/graphs/graph.json 2>/dev/null
 If graph.json exists, check freshness:
 
 ```bash
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" graphify status
+node "$HOME/.claude/gsd-core/bin/gsd-tools.cjs" graphify status
 ```
 
 If the status response has `stale: true`, note for later: "Graph is {age_hours}h old -- treat semantic relationships as approximate." Include this annotation inline with any graph context injected below.
@@ -640,7 +640,7 @@ If the status response has `stale: true`, note for later: "Graph is {age_hours}h
 Query the graph for each major capability in the phase scope (2-3 queries per D-05, discovery-focused):
 
 ```bash
-node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" graphify query "<capability-keyword>" --budget 1500
+node "$HOME/.claude/gsd-core/bin/gsd-tools.cjs" graphify query "<capability-keyword>" --budget 1500
 ```
 
 Derive query terms from the phase goal and requirement descriptions. Examples:
@@ -803,6 +803,19 @@ List missing test files, framework config, or shared fixtures needed before impl
 ## Step 6: Write RESEARCH.md
 
 Use the Write tool to create files — never use `Bash(cat << 'EOF')` or heredoc commands for file creation. This rule applies regardless of `commit_docs` setting.
+
+**Write contract (hard rules — must follow):**
+
+This file is the canonical output of this agent. The orchestrator reads `$PHASE_DIR/$PADDED_PHASE-RESEARCH.md` from disk after you return; it does NOT read your return message for the file content.
+
+1. **Default: write the whole file in a single `Write` call.** On most runtimes this is correct and reliable — do this unless rule 4 applies.
+2. **Do NOT return the RESEARCH.md content in your response.** Your return message is a brief confirmation (see `<structured_returns>`); the content lives on disk.
+3. **Do NOT use `Bash(cat << 'EOF')` or heredoc** for file creation. Use the `Write` tool.
+4. **Large-file / truncation fallback.** Some runtimes (e.g. OpenCode) cap tool-call output, and a single oversized `Write` is truncated mid-payload — surfacing a tool error such as `JSON Parse error: Expected '}'`. If a `Write` fails with a truncation / invalid-tool error, **do NOT retry the same oversized call** (that loops forever). Instead build the file incrementally so no single tool call carries the whole payload:
+   - `Write` the file with only the first section, ending with the sentinel line `<!-- gsd:write-continue -->`.
+   - `Read` the file, then `Edit` it, replacing `<!-- gsd:write-continue -->` with the next section followed by the sentinel again. Repeat, one section per `Edit`.
+   - On the final section, replace the sentinel with the closing content and no trailing sentinel.
+5. **If writing still fails, surface the actual error in your return message.** **Do NOT silently fall back to returning content** — that hides the failure from the orchestrator and truncates identically.
 
 **If CONTEXT.md exists, FIRST content section MUST be `<user_constraints>`:**
 

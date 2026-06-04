@@ -15,10 +15,11 @@ const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const { cleanup } = require('./helpers.cjs');
 
 const repoRoot = path.resolve(__dirname, '..');
 const commandPath = path.join(repoRoot, 'commands', 'gsd', 'milestone-summary.md');
-const workflowPath = path.join(repoRoot, 'get-shit-done', 'workflows', 'milestone-summary.md');
+const workflowPath = path.join(repoRoot, 'gsd-core', 'workflows', 'milestone-summary.md');
 
 describe('milestone-summary command', () => {
   test('command file exists', () => {
@@ -206,7 +207,7 @@ describe('milestone-summary fixture-based artifact discovery', () => {
   });
 
   afterEach(() => {
-    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   test('discovers artifacts in archived milestone structure', () => {
@@ -332,7 +333,7 @@ describe('audit.cjs module (#2158)', () => {
   afterEach(() => { cleanTP(tmpDir); });
 
   test('auditOpenArtifacts returns structured result with counts', () => {
-    const { auditOpenArtifacts } = require('../get-shit-done/bin/lib/audit.cjs');
+    const { auditOpenArtifacts } = require('../gsd-core/bin/lib/audit.cjs');
     const result = auditOpenArtifacts(tmpDir);
     assert.ok(typeof result === 'object');
     assert.ok(typeof result.counts === 'object');
@@ -341,14 +342,14 @@ describe('audit.cjs module (#2158)', () => {
   });
 
   test('auditOpenArtifacts handles missing planning directories gracefully', () => {
-    const { auditOpenArtifacts } = require('../get-shit-done/bin/lib/audit.cjs');
+    const { auditOpenArtifacts } = require('../gsd-core/bin/lib/audit.cjs');
     const result = auditOpenArtifacts(tmpDir);
     assert.strictEqual(result.counts.total, 0);
     assert.strictEqual(result.has_open_items, false);
   });
 
   test('auditOpenArtifacts detects open debug sessions', () => {
-    const { auditOpenArtifacts } = require('../get-shit-done/bin/lib/audit.cjs');
+    const { auditOpenArtifacts } = require('../gsd-core/bin/lib/audit.cjs');
     const debugDir = path.join(tmpDir, '.planning', 'debug');
     fs.mkdirSync(debugDir, { recursive: true });
     fs.writeFileSync(path.join(debugDir, 'test-bug.md'), [
@@ -362,7 +363,7 @@ describe('audit.cjs module (#2158)', () => {
   });
 
   test('auditOpenArtifacts ignores resolved debug sessions', () => {
-    const { auditOpenArtifacts } = require('../get-shit-done/bin/lib/audit.cjs');
+    const { auditOpenArtifacts } = require('../gsd-core/bin/lib/audit.cjs');
     const resolvedDir = path.join(tmpDir, '.planning', 'debug', 'resolved');
     fs.mkdirSync(resolvedDir, { recursive: true });
     fs.writeFileSync(path.join(resolvedDir, 'old-bug.md'), ['---', 'status: resolved', '---', '# Resolved'].join('\n'));
@@ -372,14 +373,14 @@ describe('audit.cjs module (#2158)', () => {
   });
 
   test('formatAuditReport returns string with header', () => {
-    const { auditOpenArtifacts, formatAuditReport } = require('../get-shit-done/bin/lib/audit.cjs');
+    const { auditOpenArtifacts, formatAuditReport } = require('../gsd-core/bin/lib/audit.cjs');
     const report = formatAuditReport(auditOpenArtifacts(tmpDir));
     assert.ok(typeof report === 'string');
     assert.ok(report.includes('Artifact Audit') || report.includes('artifact audit') || report.includes('All artifact'));
   });
 
   test('formatAuditReport shows all clear when no open items', () => {
-    const { auditOpenArtifacts, formatAuditReport } = require('../get-shit-done/bin/lib/audit.cjs');
+    const { auditOpenArtifacts, formatAuditReport } = require('../gsd-core/bin/lib/audit.cjs');
     const report = formatAuditReport(auditOpenArtifacts(tmpDir));
     assert.ok(report.includes('clear') || report.includes('0 items') || report.includes('no open'));
   });
@@ -387,7 +388,7 @@ describe('audit.cjs module (#2158)', () => {
 
 describe('complete-milestone workflow has pre-close audit gate (#2158)', () => {
   const completeMilestoneContent = fs.readFileSync(
-    path.join(__dirname, '..', 'get-shit-done', 'workflows', 'complete-milestone.md'),
+    path.join(__dirname, '..', 'gsd-core', 'workflows', 'complete-milestone.md'),
     'utf8',
   );
 
@@ -411,7 +412,7 @@ describe('complete-milestone workflow has pre-close audit gate (#2158)', () => {
 
 describe('verify-work workflow has phase artifact check (#2157)', () => {
   const verifyWorkContent = fs.readFileSync(
-    path.join(__dirname, '..', 'get-shit-done', 'workflows', 'verify-work.md'),
+    path.join(__dirname, '..', 'gsd-core', 'workflows', 'verify-work.md'),
     'utf8',
   );
 
@@ -428,7 +429,7 @@ describe('verify-work workflow has phase artifact check (#2157)', () => {
 
 describe('state.md template has Deferred Items section (#2158)', () => {
   const stateTemplate = fs.readFileSync(
-    path.join(__dirname, '..', 'get-shit-done', 'templates', 'state.md'),
+    path.join(__dirname, '..', 'gsd-core', 'templates', 'state.md'),
     'utf8',
   );
 

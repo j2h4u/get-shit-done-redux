@@ -1,5 +1,7 @@
 # GSD Configuration Reference
 
+Complete schema reference for `.planning/config.json`. For setup walkthroughs and task-oriented guides see the [docs index](README.md).
+
 > Full configuration schema, workflow toggles, model profiles, and git branching options. For feature context, see [Feature Reference](FEATURES.md).
 
 ---
@@ -135,16 +137,24 @@ GSD stores project settings in `.planning/config.json`. Created during `/gsd-new
 | Setting | Type | Options | Default | Description |
 |---------|------|---------|---------|-------------|
 | `mode` | enum | `interactive`, `yolo` | `interactive` | `yolo` auto-approves decisions; `interactive` confirms at each step |
-| `granularity` | enum | `coarse`, `standard`, `fine` | `standard` | Controls phase count: `coarse` (3-5), `standard` (5-8), `fine` (8-12) |
+| `granularity` | enum | `coarse`, `standard`, `fine` | `standard` | Controls phase count: `coarse` (2-4), `standard` (4-6), `fine` (6-10) |
 | `model_profile` | enum | `quality`, `balanced`, `budget`, `adaptive`, `inherit` | `balanced` | Model tier for each agent (see [Model Profiles](#model-profiles)). `adaptive` was added per [#1713](https://github.com/open-gsd/gsd-core/issues/1713) / [#1806](https://github.com/open-gsd/gsd-core/issues/1806) and resolves the same way as the other tiers under runtime-aware profiles. |
 | `runtime` | string | `claude`, `codex`, or any string | (none) | Active runtime for [runtime-aware profile resolution](#runtime-aware-profiles-2517). When set, profile tiers (opus/sonnet/haiku) resolve to runtime-native model IDs. Today only the Codex install path emits per-agent model IDs from this resolver; other runtimes (`opencode`, `gemini`, `qwen`, `copilot`, …) consume the resolver at spawn time and gain dedicated install-path support in [#2612](https://github.com/open-gsd/gsd-core/issues/2612). When unset (default), behavior is unchanged from prior versions. Added in v1.39 |
 | `model_profile_overrides.<runtime>.<tier>` | string \| object | per-runtime tier override | (none) | Override the runtime-aware tier mapping for a specific `(runtime, tier)`. Tier is one of `opus`, `sonnet`, `haiku`. Value is either a model ID string (e.g. `"gpt-5-pro"`) or `{ model, reasoning_effort }`. See [Runtime-Aware Profiles](#runtime-aware-profiles-2517). Added in v1.39 |
+| `model_policy.provider` | string | `openai`, `anthropic`, `google`, `qwen`, `generic` | (none) | Declares the model provider. Known providers (`openai`, `anthropic`, `google`, `qwen`) unlock catalog-backed presets. `generic` treats all model IDs as opaque strings — no prefix inference, no reasoning-effort defaults. `model_policy.runtime_tiers` resolves before legacy `model_profile_overrides`. See [Model Policy Presets](#model-policy-presets-model_policy--added-in-v142). Added in v1.42 ([#49](https://github.com/open-gsd/gsd-core/issues/49)) |
+| `model_policy.budget` | enum | `high`, `medium`, `low` | (none) | Selects a budget tier when using a known provider. GSD materializes the matching catalog preset into explicit tier mappings at resolve time. Ignored when `provider` is `generic` or `custom`. Added in v1.42 ([#49](https://github.com/open-gsd/gsd-core/issues/49)) |
+| `model_policy.high` | string | model ID | (none) | High-cost tier model ID for `generic`/`custom` provider. Used when `provider: "generic"` or `"custom"`. Added in v1.42 ([#49](https://github.com/open-gsd/gsd-core/issues/49)) |
+| `model_policy.medium` | string | model ID | (none) | Medium-cost tier model ID for `generic`/`custom` provider. Added in v1.42 ([#49](https://github.com/open-gsd/gsd-core/issues/49)) |
+| `model_policy.low` | string | model ID | (none) | Low-cost tier model ID for `generic`/`custom` provider. Added in v1.42 ([#49](https://github.com/open-gsd/gsd-core/issues/49)) |
+| `model_policy.runtime_tiers.<runtime>.<tier>` | object | `{ model, reasoning_effort? }` | (none) | Explicit per-runtime, per-tier model entry. `tier` is one of `opus`, `sonnet`, `haiku` (matching the existing profile tier names). `reasoning_effort` is forwarded only to runtimes that support it; unsupported runtimes never receive the field. Takes precedence over `model_profile_overrides`. Added in v1.42 ([#49](https://github.com/open-gsd/gsd-core/issues/49)) |
 | `models.<phase_type>` | enum | `opus`, `sonnet`, `haiku`, `inherit` | (none) | Per-phase-type model tier. Six accepted slots: `planning`, `discuss`, `research`, `execution`, `verification`, `completion`. Lets you tune at the phase level ("Opus for planning, Sonnet for the rest") without learning agent names. Resolves between `model_overrides` (higher) and `model_profile` (lower); see [Per-Phase-Type Models](#per-phase-type-models-models--added-in-v140). Added in v1.40 ([#3023](https://github.com/open-gsd/gsd-core/pull/3030)) |
+| `granularities.<phase_type>` | enum | `coarse`, `standard`, `fine` | (none) | Per-phase-type granularity override. Six accepted slots: `planning`, `discuss`, `research`, `execution`, `verification`, `completion`. Lets you tune phase count at the phase level without changing the global `granularity`. Precedence: `granularities[phaseType]` (highest, enum-guarded) → `granularity` (global) → `planning.granularity` → `'standard'` (hard default). Added in v1.43 ([#68](https://github.com/open-gsd/gsd-core/issues/68)) |
 | `dynamic_routing.enabled` | boolean | `true`, `false` | `false` | Master switch for [dynamic routing with failure-tier escalation](#dynamic-routing-with-failure-tier-escalation-dynamic_routing--added-in-v140). When `true`, agents resolve to `tier_models[default_tier]` and escalate one tier up on orchestrator-detected soft failure. Added in v1.40 ([#3024](https://github.com/open-gsd/gsd-core/pull/3031)) |
 | `dynamic_routing.tier_models.<tier>` | enum | `opus`, `sonnet`, `haiku` | (none) | Tier alias for `light`, `standard`, or `heavy`. Used when `dynamic_routing.enabled: true`. Added in v1.40 |
 | `dynamic_routing.escalate_on_failure` | boolean | `true`, `false` | `true` | When `false`, escalation is disabled even if `enabled: true` — every attempt uses the default tier. Added in v1.40 |
 | `dynamic_routing.max_escalations` | integer | `0`, `1`, `2`, … | `1` | Hard cap on retries per agent invocation. Beyond the cap the resolver returns the cap-tier model. Added in v1.40 |
 | `project_code` | string | any short string | (none) | Prefix for phase directory names (e.g., `"ABC"` produces `ABC-01-setup/`). Added in v1.31 |
+| `phase_id_convention` | enum | `"milestone-prefixed"`, `null` | `null` | Phase ID naming convention. `null` = legacy numeric IDs (`Phase 1`, `Phase 2`). `"milestone-prefixed"` = globally unique IDs that encode the enclosing milestone (`Phase 1-01`, `Phase 1-02`). Run `gsd-tools roadmap upgrade --convention milestone-prefixed` to migrate an existing ROADMAP.md. |
 | `response_language` | string | language code | (none) | Language for agent responses (e.g., `"pt"`, `"ko"`, `"ja"`). Propagates to all spawned agents for cross-phase language consistency. Added in v1.32 |
 | `context_window` | number | any integer | `200000` | Context window size in tokens. Set `1000000` for 1M-context models (e.g., `claude-opus-4-7[1m]`). Values `>= 500000` enable adaptive context enrichment (full-body reads of prior SUMMARY.md, deeper anti-pattern reads). Configured via `/gsd-config --advanced`. |
 | `context_profile` | string | `dev`, `research`, `review` | (none) | Execution context preset that applies a pre-configured bundle of mode, model, and workflow settings for the current type of work. Added in v1.34 |
@@ -175,7 +185,7 @@ API key fields accept a string value (the key itself). They can also be set to t
 | `firecrawl` | string \| boolean \| null | `null` | Firecrawl API key for deep-crawl scraping. Masked in display |
 | `exa_search` | string \| boolean \| null | `null` | Exa Search API key for semantic search. Masked in display |
 
-**Masking convention (`get-shit-done/bin/lib/secrets.cjs`):** keys 8+ characters render as `****<last-4>`; shorter keys render as `****`; `null`/empty renders as `(unset)`. Plaintext is written as-is to `.planning/config.json` — that file is the security boundary — but the CLI, confirmation tables, logs, and `AskUserQuestion` descriptions never display the plaintext. This applies to the `config-set` command output itself: `config-set brave_search <key>` returns a JSON payload with the value masked.
+**Masking convention (`gsd-core/bin/lib/secrets.cjs`):** keys 8+ characters render as `****<last-4>`; shorter keys render as `****`; `null`/empty renders as `(unset)`. Plaintext is written as-is to `.planning/config.json` — that file is the security boundary — but the CLI, confirmation tables, logs, and `AskUserQuestion` descriptions never display the plaintext. This applies to the `config-set` command output itself: `config-set brave_search <key>` returns a JSON payload with the value masked.
 
 ### Code-review CLI routing
 
@@ -247,7 +257,7 @@ All workflow toggles follow the **absent = enabled** pattern. If a key is missin
 | `workflow.plan_chunked` | boolean | `false` | Enable chunked planning mode. When `true` (or when `--chunked` flag is passed to `/gsd-plan-phase`), the orchestrator splits the single long-lived planner Task into a short outline Task followed by N short per-plan Tasks (~3-5 min each). Each plan is committed individually for crash resilience. If a Task hangs and the terminal is force-killed, rerunning with `--chunked` resumes from the last completed plan. Particularly useful on Windows where long-lived Tasks may hang on stdio. Added in v1.38 |
 | `workflow.code_review_command` | string | (none) | Shell command for external code review integration in `/gsd-ship`. Receives changed file paths via stdin. Non-zero exit blocks the ship workflow. Added in v1.36 |
 | `workflow.tdd_mode` | boolean | `false` | Enable TDD pipeline as a first-class execution mode. When `true`, the planner aggressively applies `type: tdd` to eligible tasks (business logic, APIs, validations, algorithms) and the executor enforces RED/GREEN/REFACTOR gate sequence. An end-of-phase collaborative review checkpoint verifies gate compliance. Added in v1.36 |
-| `workflow.human_verify_mode` | string | `'end-of-phase'` | Controls human verification checkpoints. `'end-of-phase'` (default since #3309) suppresses `checkpoint:human-verify` tasks and embeds checks into `<verify><human-check>` blocks for end-of-phase review. `'mid-flight'` restores blocking checkpoint tasks. `checkpoint:decision` and `checkpoint:human-action` are unaffected. See [Checkpoints Reference](../get-shit-done/references/checkpoints.md#checkpoint_types). |
+| `workflow.human_verify_mode` | string | `'end-of-phase'` | Controls human verification checkpoints. `'end-of-phase'` (default since #3309) suppresses `checkpoint:human-verify` tasks and embeds checks into `<verify><human-check>` blocks for end-of-phase review. `'mid-flight'` restores blocking checkpoint tasks. `checkpoint:decision` and `checkpoint:human-action` are unaffected. See [Checkpoints Reference](../gsd-core/references/checkpoints.md#checkpoint_types). |
 | `workflow.cross_ai_execution` | boolean | `false` | Delegate phase execution to an external AI CLI instead of spawning local executor agents. Useful for leveraging a different model's strengths for specific phases. Added in v1.36 |
 | `workflow.cross_ai_command` | string | (none) | Shell command template for cross-AI execution. Receives the phase prompt via stdin. Must produce SUMMARY.md-compatible output. Required when `cross_ai_execution` is `true`. Added in v1.36 |
 | `workflow.cross_ai_timeout` | number | `300` | Timeout in seconds for cross-AI execution commands. Prevents runaway external processes. Added in v1.36 |
@@ -276,7 +286,7 @@ The `code_quality.*` namespace gates optional structural-analysis tooling that a
 
 ## Ship Settings
 
-`ship.pr_body_sections` adds additional PR body sections for project-specific PRD/PR body content in `/gsd-ship` without editing `get-shit-done/workflows/ship.md`.
+`ship.pr_body_sections` adds additional PR body sections for project-specific PRD/PR body content in `/gsd-ship` without editing `gsd-core/workflows/ship.md`.
 
 For a user guide with onboarding examples and troubleshooting, see [Custom PR Body Sections](ship-pr-body-sections.md).
 
@@ -324,7 +334,9 @@ Example:
 }
 ```
 
-### Recommended Presets
+### Common Setting Combinations
+
+The following combinations of `mode`, `granularity`, `model_profile`, and workflow toggles are commonly used together. See [Configure model profiles](how-to/configure-model-profiles.md) for setup guidance.
 
 | Scenario | mode | granularity | profile | research | plan_check | verifier |
 |----------|------|-------------|---------|----------|------------|----------|
@@ -372,11 +384,7 @@ The prompt injection guard hook (`gsd-prompt-guard.js`) is always active and can
 
 ### Private Planning Setup
 
-To keep planning artifacts out of git:
-
-1. Set `planning.commit_docs: false` and `planning.search_gitignored: true`
-2. Add `.planning/` to `.gitignore`
-3. If previously tracked: `git rm -r --cached .planning/ && git commit -m "chore: stop tracking planning docs"`
+When `planning.commit_docs` is `false` and `.planning/` is listed in `.gitignore`, GSD treats planning artefacts as local-only. `planning.search_gitignored: true` ensures broad searches still include the `.planning/` directory in this configuration. See [Configure private planning](how-to/configure-model-profiles.md) for setup steps.
 
 ---
 
@@ -478,19 +486,7 @@ The `plan_review.*` namespace controls the plan drift guard, which verifies that
 
 #### Multi-developer setup
 
-If multiple developers will rebuild the graph in the same repo, run once per
-clone after enabling graphify:
-
-```bash
-graphify hook install
-```
-
-This installs a git merge driver that union-merges concurrent `graph.json`
-writes (no conflict markers in the knowledge graph), plus the post-commit
-rebuild hook. It writes `.gitattributes` and registers `graphify
-merge-driver` in `.git/config`. Solo projects can skip this step; running it
-anyway is harmless. Introduced upstream in graphify v0.7.0 alongside the
-`built_at_commit` freshness signal that `/gsd-graphify status` surfaces.
+When multiple developers rebuild the graph in the same repository, `graphify hook install` (run once per clone) installs a git merge driver that union-merges concurrent `graph.json` writes, eliminating conflict markers. It also registers the post-commit rebuild hook, writes `.gitattributes`, and adds `graphify merge-driver` to `.git/config`. Solo projects may skip this step. Introduced upstream in graphify v0.7.0 alongside the `built_at_commit` freshness signal surfaced by `/gsd-graphify status`.
 
 #### Commit-based staleness
 
@@ -549,7 +545,7 @@ The `features.*` namespace is a dynamic key pattern — new feature flags can be
 | `next_phases` | YAML flow array | Phases the `next_action` applies to (e.g. `["4.5"]`) |
 | `progress` | block | Nested `total_phases` / `completed_phases` / `percent` for the milestone progress bar |
 
-All four fields are **optional and additive** — STATE.md files without them keep rendering exactly as in v1.38.x. See [`STATE-MD-LIFECYCLE.md`](STATE-MD-LIFECYCLE.md) for the full field reference, parser constraints, and rendering scenes.
+All four fields are **optional and additive** — STATE.md files without them keep rendering exactly as in v1.38.x. See [STATE.md schema](reference/state-md.md) for the full field reference, parser constraints, and rendering scenes.
 
 ---
 
@@ -790,7 +786,7 @@ Invalid flag tokens are sanitized and logged as warnings. Only recognized GSD fl
 | gsd-doc-writer | Opus | Sonnet | Haiku | Sonnet | Inherit |
 | gsd-doc-verifier | Sonnet | Sonnet | Haiku | Haiku | Inherit |
 
-> **All 33 shipped agents have explicit per-profile tier assignments** in the catalog (`sdk/shared/model-catalog.json`). The table above shows a representative subset of the most-used agents. For agents not listed here, `model_overrides` accepts any shipped agent name. The authoritative profile data is derived from `sdk/shared/model-catalog.json` via `get-shit-done/bin/lib/model-catalog.cjs` and `sdk/src/model-catalog.ts`.
+> **All 33 shipped agents have explicit per-profile tier assignments** in the catalog (`sdk/shared/model-catalog.json`). The table above shows a representative subset of the most-used agents. For agents not listed here, `model_overrides` accepts any shipped agent name. The authoritative profile data is derived from `sdk/shared/model-catalog.json` via `gsd-core/bin/lib/model-catalog.cjs` and `sdk/src/model-catalog.ts`.
 
 ### Per-Agent Overrides
 
@@ -1217,6 +1213,84 @@ This resolves `gsd-planner` → `gpt-5.5` (xhigh), `gsd-executor` → `gpt-5.3-c
 
 ---
 
+## Model Policy Presets (`model_policy`) — Added in v1.42
+
+> **[#49](https://github.com/open-gsd/gsd-core/issues/49)** — provider-neutral model policy config surface. Resolves before legacy `model_profile_overrides`.
+
+`model_policy` provides a simpler, provider-neutral way to configure model tiers across runtimes. It is the preferred surface for non-Anthropic runtimes where `model_profile_overrides` would require manually knowing the right model IDs. Configure it via `/gsd:settings` → Section 8 (Model Policy).
+
+### Known provider preset
+
+Choose a provider and budget level via the settings workflow; GSD writes the canonical model IDs for that provider/budget combination:
+
+```json
+{
+  "runtime": "codex",
+  "model_policy": {
+    "provider": "openai",
+    "budget": "medium",
+    "high":   "gpt-5.5",
+    "medium": "gpt-5.3-codex",
+    "low":    "gpt-5.4-mini"
+  }
+}
+```
+
+Known providers: `openai`, `anthropic`, `google`, `qwen`. Budget levels: `high`, `medium`, `low`.
+
+For advanced per-runtime control, `runtime_tiers` accepts explicit entries using the internal profile tier names (`opus`, `sonnet`, `haiku`):
+
+```json
+{
+  "runtime": "codex",
+  "model_policy": {
+    "provider": "openai",
+    "runtime_tiers": {
+      "codex": {
+        "opus":   { "model": "gpt-5.5",        "reasoning_effort": "high" },
+        "sonnet": { "model": "gpt-5.3-codex",  "reasoning_effort": "medium" },
+        "haiku":  { "model": "gpt-5.4-mini",   "reasoning_effort": "low" }
+      }
+    }
+  }
+}
+```
+
+### Generic provider (escape hatch)
+
+Use `provider: "generic"` (or `"custom"`) for OpenRouter, LiteLLM, local gateways, or any runtime where you supply exact model IDs. GSD treats model IDs as opaque strings — no prefix inference, no provider-specific defaults:
+
+```json
+{
+  "runtime": "opencode",
+  "model_policy": {
+    "provider": "generic",
+    "high":   "openrouter/anthropic/claude-opus-4-5",
+    "medium": "openrouter/anthropic/claude-sonnet-4-5",
+    "low":    "openrouter/anthropic/claude-haiku-4-5"
+  }
+}
+```
+
+### Reasoning effort gating
+
+`reasoning_effort` within a `runtime_tiers` entry is forwarded only to runtimes that declare support for it (currently: `codex`). Any runtime not on the allowlist receives the tier entry without the `reasoning_effort` field — it is silently stripped, never leaked.
+
+### Precedence
+
+`model_policy` resolution sits above `model_profile_overrides` in the resolver:
+
+1. `model_overrides[<agent>]` — per-agent explicit ID (highest)
+2. `model_policy.runtime_tiers[<runtime>][<tier>]` — explicit runtime/tier entry
+3. `model_policy` flat `high`/`medium`/`low` keys — for `generic`/`custom` provider
+4. `model_profile_overrides[<runtime>][<tier>]` — legacy per-runtime override
+5. Built-in runtime catalog default
+6. `model_profile` tier alias
+
+**Backwards compatibility.** Configs without `model_policy` are unaffected. Existing `model_profile_overrides` blocks continue to work exactly as before.
+
+---
+
 ## Environment Variables
 
 | Variable | Purpose |
@@ -1286,3 +1360,12 @@ GSD_AUDIT_ARGS=1 GSD_AUDIT=1 gsd plan --tdd
 ```
 
 `GSD_AUDIT_ARGS` applies to both the stderr error line and the audit file simultaneously.
+
+---
+
+## Related
+
+- [Commands](COMMANDS.md)
+- [Configure model profiles](how-to/configure-model-profiles.md)
+- [STATE.md schema](reference/state-md.md)
+- [Docs index](README.md)

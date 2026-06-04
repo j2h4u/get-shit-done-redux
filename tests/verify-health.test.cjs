@@ -74,6 +74,7 @@ describe('validate health command', () => {
 
   test("returns 'broken' when .planning directory is missing", () => {
     // createTempProject creates .planning/phases — remove it entirely
+    // eslint-disable-next-line local/no-raw-rmsync-in-tests -- mid-test SUT setup: removes .planning/ to simulate missing dir condition
     fs.rmSync(path.join(tmpDir, '.planning'), { recursive: true, force: true });
 
     const result = runGsdTools('validate health', tmpDir);
@@ -839,7 +840,7 @@ describe('validate health --repair command', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Regression: CJS bundle drift — W005/W006/I001 false positives (#3806)
 // PR #3479 fixed these in sdk/src/query/validate.ts but never propagated to
-// get-shit-done/bin/lib/verify.cjs. These tests fail on old verify.cjs and
+// gsd-core/bin/lib/verify.cjs. These tests fail on old verify.cjs and
 // pass on the fixed version.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1008,6 +1009,7 @@ describe('validate health — missing phasesDir', () => {
     // Remove the phases directory if it exists
     const phasesDir = path.join(tmpDir, '.planning', 'phases');
     if (fs.existsSync(phasesDir)) {
+      // eslint-disable-next-line local/no-raw-rmsync-in-tests -- mid-test SUT setup: removes phases/ to simulate missing phasesDir condition
       fs.rmSync(phasesDir, { recursive: true, force: true });
     }
 

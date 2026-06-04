@@ -10,7 +10,7 @@ const os = require('os');
 const path = require('path');
 const { runGsdTools, cleanup } = require('./helpers.cjs');
 const { createFixture, seedWorkstream, writeState } = require('./fixtures/index.cjs');
-const { migrateToWorkstreams, getOtherActiveWorkstreams } = require('../get-shit-done/bin/lib/workstream.cjs');
+const { migrateToWorkstreams, getOtherActiveWorkstreams } = require('../gsd-core/bin/lib/workstream.cjs');
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 
@@ -291,6 +291,7 @@ describe('pointer lifecycle hardening', () => {
 
     runGsdTools(['workstream', 'set', 'alpha', '--raw'], tmpDir, { GSD_SESSION_KEY: 'session-alpha' });
     runGsdTools(['workstream', 'set', 'beta', '--raw'], tmpDir, { GSD_SESSION_KEY: 'session-beta' });
+    // eslint-disable-next-line local/no-raw-rmsync-in-tests -- mid-test fault injection: simulates a deleted workstream to exercise stale-pointer self-cleanup
     fs.rmSync(path.join(tmpDir, '.planning', 'workstreams', 'alpha'), { recursive: true, force: true });
 
     const alpha = runGsdTools(['workstream', 'get'], tmpDir, { GSD_SESSION_KEY: 'session-alpha' });
@@ -841,7 +842,7 @@ describe('path traversal rejection', () => {
   });
 
   describe('setActiveWorkstream rejects invalid names directly', () => {
-    const { setActiveWorkstream } = require('../get-shit-done/bin/lib/core.cjs');
+    const { setActiveWorkstream } = require('../gsd-core/bin/lib/core.cjs');
     for (const name of maliciousNames) {
       test(`throws for ${name}`, () => {
         assert.throws(

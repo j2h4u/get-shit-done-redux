@@ -13,7 +13,7 @@ const { createTempProject, createTempGitProject, cleanup } = require('./helpers.
 
 const {
   graphifyStatus,
-} = require('../get-shit-done/bin/lib/graphify.cjs');
+} = require('../gsd-core/bin/lib/graphify.cjs');
 
 const {
   enableGraphify,
@@ -546,9 +546,7 @@ describe('regressions', () => {
     });
 
     after(() => {
-      if (tmpDir) {
-        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
-      }
+      cleanup(tmpDir);
     });
 
     test('hooks/gsd-graphify-update.sh present at install target', () => {

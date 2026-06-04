@@ -3,42 +3,25 @@ import tseslint from 'typescript-eslint';
 import globals from 'globals';
 import pluginN from 'eslint-plugin-n';
 import noOnlyTests from 'eslint-plugin-no-only-tests';
-import { existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Local plugin with three custom AST rules
+// Local plugin with custom AST rules
 import noSourceGrep from './eslint-rules/no-source-grep.cjs';
 import noMagicSleepInTests from './eslint-rules/no-magic-sleep-in-tests.cjs';
 import noElapsedAssertion from './eslint-rules/no-elapsed-assertion.cjs';
+import noRawRmsyncInTests from './eslint-rules/no-raw-rmsync-in-tests.cjs';
 
 const localPlugin = {
   rules: {
     'no-source-grep': noSourceGrep,
     'no-magic-sleep-in-tests': noMagicSleepInTests,
     'no-elapsed-assertion': noElapsedAssertion,
+    'no-raw-rmsync-in-tests': noRawRmsyncInTests,
   },
 };
-
-// Generated bin/lib files — never lint
-const GENERATED_CJS_IGNORES = [
-  'get-shit-done/bin/lib/command-aliases.cjs',
-  'get-shit-done/bin/lib/configuration.cjs',
-  'get-shit-done/bin/lib/decisions.cjs',
-  'get-shit-done/bin/lib/phase-lifecycle.cjs',
-  'get-shit-done/bin/lib/plan-scan.cjs',
-  'get-shit-done/bin/lib/project-root.cjs',
-  'get-shit-done/bin/lib/schema-detect.cjs',
-  'get-shit-done/bin/lib/secrets.cjs',
-  'get-shit-done/bin/lib/state-document.cjs',
-  'get-shit-done/bin/lib/validate.cjs',
-  'get-shit-done/bin/lib/workstream-inventory-builder.cjs',
-  'get-shit-done/bin/lib/workstream-name-policy.cjs',
-];
-
-const sdkSrcExists = existsSync(join(__dirname, 'sdk', 'src'));
 
 export default tseslint.config(
   // ── Global ignores ─────────────────────────────────────────────────────────
@@ -46,20 +29,123 @@ export default tseslint.config(
     ignores: [
       'node_modules/**',
       '**/dist/**',
-      'sdk/dist/**',
       '.worktrees/**',
       '.claude/**',
       'coverage/**',
       '**/*.generated.cjs',
-      ...GENERATED_CJS_IGNORES,
+      // ADR-457: tsc-generated runtime artifact — lint the src/*.cts source, not the emitted .cjs.
+      'gsd-core/bin/lib/semver-compare.cjs',
+      'gsd-core/bin/lib/code-review-flags.cjs',
+      'gsd-core/bin/lib/context-utilization.cjs',
+      'gsd-core/bin/lib/artifacts.cjs',
+      'gsd-core/bin/lib/command-arg-projection.cjs',
+      'gsd-core/bin/lib/clock.cjs',
+      'gsd-core/bin/lib/ui-safety-gate.cjs',
+      'gsd-core/bin/lib/review-reviewer-selection.cjs',
+      'gsd-core/bin/lib/clusters.cjs',
+      'gsd-core/bin/lib/installer-migrations/001-legacy-orphan-files.cjs',
+      'gsd-core/bin/lib/observability/redaction.cjs',
+      'gsd-core/bin/lib/installer-migration-report.cjs',
+      'gsd-core/bin/lib/prompt-budget.cjs',
+      'gsd-core/bin/lib/secrets.cjs',
+      'gsd-core/bin/lib/phase-lifecycle.cjs',
+      'gsd-core/bin/lib/workstream-name-policy.cjs',
+      'gsd-core/bin/lib/decisions.cjs',
+      'gsd-core/bin/lib/validate.cjs',
+      'gsd-core/bin/lib/schema-detect.cjs',
+      'gsd-core/bin/lib/runtime-name-policy.cjs',
+      'gsd-core/bin/lib/runtime-slash.cjs',
+      'gsd-core/bin/lib/observability/event.cjs',
+      'gsd-core/bin/lib/workstream-inventory-builder.cjs',
+      'gsd-core/bin/lib/plan-scan.cjs',
+      'gsd-core/bin/lib/fallow-runner.cjs',
+      'gsd-core/bin/lib/project-root.cjs',
+      'gsd-core/bin/lib/installer-migration-authoring.cjs',
+      'gsd-core/bin/lib/update-context.cjs',
+      'gsd-core/bin/lib/installer-migrations/000-first-time-baseline.cjs',
+      'gsd-core/bin/lib/runtime-homes.cjs',
+      'gsd-core/bin/lib/model-catalog.cjs',
+      'gsd-core/bin/lib/configuration.cjs',
+      'gsd-core/bin/lib/state-document.cjs',
+      'gsd-core/bin/lib/shell-command-projection.cjs',
+      'gsd-core/bin/lib/security.cjs',
+      'gsd-core/bin/lib/command-aliases.cjs',
+      'gsd-core/bin/lib/config-schema.cjs',
+      'gsd-core/bin/lib/model-profiles.cjs',
+      'gsd-core/bin/lib/installer-migrations/002-codex-legacy-hooks-json.cjs',
+      'gsd-core/bin/lib/installer-migrations/003-rename-get-shit-done-to-gsd-core.cjs',
+      'gsd-core/bin/lib/observability/logger.cjs',
+      'gsd-core/bin/lib/active-workstream-store.cjs',
+      'gsd-core/bin/lib/adr-parser.cjs',
+      'gsd-core/bin/lib/graphify.cjs',
+      'gsd-core/bin/lib/install-profiles.cjs',
+      'gsd-core/bin/lib/intel.cjs',
+      'gsd-core/bin/lib/installer-migrations.cjs',
+      'gsd-core/bin/lib/worktree-safety.cjs',
+      'gsd-core/bin/lib/planning-workspace.cjs',
+      'gsd-core/bin/lib/runtime-artifact-layout.cjs',
+      'gsd-core/bin/lib/command-routing-hub.cjs',
+      'gsd-core/bin/lib/core.cjs',
+      'gsd-core/bin/lib/drift.cjs',
+      'gsd-core/bin/lib/cjs-command-router-adapter.cjs',
+      'gsd-core/bin/lib/phase-command-router.cjs',
+      'gsd-core/bin/lib/surface.cjs',
+      'gsd-core/bin/lib/roadmap-upgrade.cjs',
+      'gsd-core/bin/lib/config-types.cjs',
+      'gsd-core/bin/lib/phases-command-router.cjs',
+      'gsd-core/bin/lib/verify-command-router.cjs',
+      'gsd-core/bin/lib/init-command-router.cjs',
+      'gsd-core/bin/lib/agent-command-router.cjs',
+      'gsd-core/bin/lib/task-command-router.cjs',
+      'gsd-core/bin/lib/validate-command-router.cjs',
+      'gsd-core/bin/lib/workstream-inventory.cjs',
+      'gsd-core/bin/lib/roadmap-command-router.cjs',
+      'gsd-core/bin/lib/state-command-router.cjs',
+      'gsd-core/bin/lib/gap-checker.cjs',
+      'gsd-core/bin/lib/config.cjs',
+      'gsd-core/bin/lib/profile-output.cjs',
+      'gsd-core/bin/lib/commands.cjs',
+      'gsd-core/bin/lib/state.cjs',
+      'gsd-core/bin/lib/milestone.cjs',
+      'gsd-core/bin/lib/phase.cjs',
+      'gsd-core/bin/lib/verify.cjs',
+      'gsd-core/bin/lib/init.cjs',
+      'gsd-core/bin/lib/docs.cjs',
+      'gsd-core/bin/lib/check-command-router.cjs',
+      'gsd-core/bin/lib/frontmatter.cjs',
+      'gsd-core/bin/lib/learnings.cjs',
+      'gsd-core/bin/lib/gsd2-import.cjs',
+      'gsd-core/bin/lib/profile-pipeline.cjs',
+      'gsd-core/bin/lib/template.cjs',
+      'gsd-core/bin/lib/uat.cjs',
+      'gsd-core/bin/lib/workstream.cjs',
+      'gsd-core/bin/lib/roadmap.cjs',
+      'gsd-core/bin/lib/audit.cjs',
     ],
   },
 
-  // ── get-shit-done/bin/**/*.cjs + scripts/**/*.cjs ───────────────────────────
-  // CommonJS Node files: js.recommended + eslint-plugin-n + local plugin rules
-  // Type-aware via parserOptions.project=tsconfig.lint.json where applicable
+  // ── src/**/*.cts — TypeScript runtime sources (ADR-457 build-at-publish) ─────
+  // First-class type-aware linting on the migrated source. The TS compiler
+  // (`npm run build:lib`, strict + noEmitOnError) is the primary type gate;
+  // these rules add lint-level coverage. warn-first per the harness convention.
   {
-    files: ['get-shit-done/bin/**/*.cjs', 'scripts/**/*.cjs'],
+    files: ['src/**/*.cts'],
+    extends: [tseslint.configs.recommendedTypeChecked],
+    languageOptions: {
+      parserOptions: {
+        project: './tsconfig.build.json',
+        tsconfigRootDir: __dirname,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+    },
+  },
+
+  // ── gsd-core/bin/**/*.cjs + scripts/**/*.cjs ───────────────────────────
+  // CommonJS Node files: js.recommended + eslint-plugin-n + local plugin rules
+  {
+    files: ['gsd-core/bin/**/*.cjs', 'scripts/**/*.cjs'],
     plugins: {
       n: pluginN,
       local: localPlugin,
@@ -110,6 +196,8 @@ export default tseslint.config(
       // Timing anti-patterns — warn for now; flip to error after cleanup
       'local/no-magic-sleep-in-tests': 'warn',
       'local/no-elapsed-assertion': 'warn',
+      // Ban raw fs.rmSync in tests — use helpers.cleanup() for Windows-EBUSY retry budget
+      'local/no-raw-rmsync-in-tests': 'error',
       // Ban raw setTimeout sync + elapsed/duration-style assertions via no-restricted-syntax
       'no-restricted-syntax': [
         'warn',

@@ -1,6 +1,6 @@
-# GSD Command Reference
+# GSD Core Command Reference
 
-> Command syntax, flags, options, and examples for stable commands. For feature details, see [Feature Reference](FEATURES.md). For workflow walkthroughs, see [User Guide](USER-GUIDE.md).
+> Command reference for GSD Core — syntax, flags, options, and examples for every stable command. For feature details see [Feature Reference](FEATURES.md); for workflow walkthroughs see [User Guide](USER-GUIDE.md); for the docs index see [README](README.md).
 
 ---
 
@@ -144,7 +144,7 @@ Research, plan, and verify a phase.
 | `--auto` | Skip interactive confirmations |
 | `--research` | Force re-research even if RESEARCH.md exists |
 | `--skip-research` | Skip domain research step |
-| `--research-phase <N>` | Research-only mode: spawn researcher for phase `<N>`, write RESEARCH.md, exit before planner. Replaces the deleted `gsd-research-phase` standalone command (#3042). |
+| `--research-phase <N>` | Research-only mode: spawn researcher for phase `<N>`, write RESEARCH.md, exit before planner. Supersedes the deleted standalone research command (#3042). |
 | `--view` | Research-only modifier: when used with `--research-phase`, print existing RESEARCH.md to stdout and exit (no spawn). |
 | `--gaps` | Gap closure mode (reads VERIFICATION.md, skips research) |
 | `--skip-verify` | Skip plan checker verification loop |
@@ -155,9 +155,11 @@ Research, plan, and verify a phase.
 | `--validate` | Run state validation before planning begins |
 | `--bounce` | Run external plan bounce validation after planning (uses `workflow.plan_bounce_script`) |
 | `--skip-bounce` | Skip plan bounce even if enabled in config |
+| `--mvp` | Vertical MVP mode — planner organizes tasks as feature slices (UI→API→DB) instead of horizontal layers. On Phase 1 of a new project with no prior phase summaries, also emits `SKELETON.md` (Walking Skeleton). Can be persisted on a phase via `**Mode:** mvp` in ROADMAP.md, which applies `--mvp` automatically without the flag. |
+| `--tdd` | TDD mode — planner applies `type: tdd` to eligible behavior-adding tasks so each begins with a failing test. Composable with `--mvp`: `--mvp --tdd` produces vertical slices where every behavior-adding task starts red-green. |
 
 **Prerequisites:** `.planning/ROADMAP.md` exists
-**Produces:** `{phase}-RESEARCH.md`, `{phase}-{N}-PLAN.md`, `{phase}-VALIDATION.md`
+**Produces:** `{phase}-RESEARCH.md`, `{phase}-{N}-PLAN.md`, `{phase}-VALIDATION.md`; `{phase}/SKELETON.md` when Walking Skeleton mode fires
 
 **Research-only mode (`--research-phase <N>`):**
 - No modifier: prompts `update / view / skip` if RESEARCH.md already exists.
@@ -186,6 +188,8 @@ See [Package Legitimacy Gate in the User Guide](USER-GUIDE.md#package-legitimacy
 /gsd-plan-phase --research-phase 4             # Research only on phase 4 (prompts if RESEARCH.md exists)
 /gsd-plan-phase --research-phase 4 --view      # Print existing RESEARCH.md, no spawn
 /gsd-plan-phase --research-phase 4 --research  # Force-refresh research, no prompt
+/gsd-plan-phase 1 --mvp                        # Vertical-slice plan for phase 1
+/gsd-plan-phase 1 --mvp --tdd                  # Vertical slices + failing test per behavior-adding task
 ```
 
 ---
@@ -264,6 +268,8 @@ User acceptance testing with auto-diagnosis.
 **Prerequisites:** Phase has been executed
 **Produces:** `{phase}-UAT.md`, fix plans if issues found
 
+For browser-backed UAT, use a configured browser MCP server. The current Open GSD companion is `gsd-browser` (`gsd-browser mcp`), which provides deterministic navigation, versioned refs, assertions, screenshots, visual diffs, recordings, and human takeover. Legacy Playwright MCP servers remain usable when already configured.
+
 ```bash
 /gsd-verify-work 1                  # UAT for phase 1
 ```
@@ -311,6 +317,8 @@ Retroactive 6-pillar visual audit of implemented frontend.
 
 **Prerequisites:** Project has frontend code (works standalone, no GSD project needed)
 **Produces:** `{phase}-UI-REVIEW.md`, screenshots in `.planning/ui-reviews/`
+
+For richer visual evidence, pair this with `gsd-browser` or another browser MCP server so the audit can capture screenshots, state, console/network context, and reproducible interaction steps.
 
 ```bash
 /gsd-ui-review                      # Audit current phase
@@ -427,6 +435,34 @@ CRUD for phases in ROADMAP.md — add, insert, remove, or edit phases with a sin
 /gsd-phase --remove 7               # Remove phase 7, renumber 8→7, 9→8, etc.
 /gsd-phase --edit 5                 # Edit any field of phase 5
 /gsd-phase --edit 5 --force         # Edit phase 5 even if in-progress or completed
+```
+
+---
+
+### `/gsd-mvp-phase`
+
+Guided MVP planning for a phase — prompts for a user story, runs SPIDR splitting check, writes `**Mode:** mvp` to ROADMAP.md, then delegates to `/gsd-plan-phase` (which auto-detects MVP mode via the roadmap field).
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `N` | **Yes** | Phase number to convert to MVP mode (integer or decimal like `2.1`) |
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Allow converting an `in_progress` or `completed` phase |
+
+**Prerequisites:** Phase must already exist in ROADMAP.md (created via `/gsd-new-project`, `/gsd-phase`, or `/gsd-phase --insert`). The command does not create new phases — it converts an existing phase.
+
+**Behaviour:** Collects a structured user story, validates format, runs a SPIDR splitting check, writes `**Goal:**` and `**Mode:** mvp` to the phase's ROADMAP.md section, then delegates to `/gsd-plan-phase <N>`. See [How to plan an MVP phase](USER-GUIDE.md#mvp-phase-planning) for a walkthrough.
+
+**Walking Skeleton:** Auto-triggered when `--mvp` (or `mode: mvp`) is used on Phase 1 of a new project with no prior phase summaries. The planner produces `SKELETON.md` alongside `PLAN.md`.
+
+**Produces:** Updated ROADMAP.md, then all artifacts from `/gsd-plan-phase`; `SKELETON.md` when Walking Skeleton mode fires.
+
+```bash
+/gsd-mvp-phase 1                    # MVP planning for phase 1
+/gsd-mvp-phase 2.1                  # MVP planning for a decimal phase
+/gsd-mvp-phase 3 --force            # Convert phase 3 even if in-progress
 ```
 
 ---
@@ -558,7 +594,7 @@ Show GSD commands at the tier you ask for. Default fits one screen; `--full` is 
 /gsd-help --brief <topic>           # Compact scoped lookup — signature + one-line summary
 ```
 
-See `get-shit-done/workflows/help/modes/topic.md` for the full alias table. Unknown topics print the recognized list.
+See `gsd-core/workflows/help/modes/topic.md` for the full alias table. Unknown topics print the recognized list.
 
 ---
 
@@ -772,7 +808,9 @@ v1.40.0, [#2792](https://github.com/open-gsd/gsd-core/issues/2792)).
 
 ### `/gsd-cleanup`
 
-Archive accumulated phase directories from completed milestones.
+Archive accumulated phase directories from completed milestones and prune local branches whose upstream has been deleted.
+
+**Behaviour:** Presents a dry-run summary of phase directories to archive (moved from `.planning/phases/` into `.planning/milestones/v{X.Y}-phases/`) and local branches whose upstream is gone (pruned via `git fetch --prune`). Requires confirmation before writing any changes. The currently checked-out branch is never pruned.
 
 ```bash
 /gsd-cleanup
@@ -1197,6 +1235,7 @@ Cross-AI peer review of phase plans from external AI CLIs.
 | `--opencode` | Include OpenCode review (via GitHub Copilot) |
 | `--qwen` | Include Qwen Code review (Alibaba Qwen models) |
 | `--cursor` | Include Cursor agent review |
+| `--agy` / `--antigravity` | Include Antigravity CLI review (free with Google credentials) |
 | `--ollama` | Include Ollama server review |
 | `--lm-studio` | Include LM Studio server review |
 | `--llama-cpp` | Include llama.cpp server review |
@@ -1357,6 +1396,40 @@ Threads are lightweight cross-session knowledge stores for work that spans multi
 
 ---
 
+## Roadmap Management Commands
+
+### `roadmap validate`
+
+Validate ROADMAP.md for structural integrity, including milestone-prefix consistency.
+
+**Prerequisites:** `.planning/ROADMAP.md` exists
+**Produces:** Validation report; exits non-zero on any error or warning
+
+```bash
+node gsd-tools.cjs roadmap validate
+```
+
+---
+
+### `roadmap upgrade --convention milestone-prefixed`
+
+Migrate legacy `Phase N` IDs to the milestone-prefixed `Phase M-NN` convention.
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--convention milestone-prefixed` | Yes | Target convention to migrate to |
+| `--apply` | No | Write changes to disk (default: dry-run only) |
+
+**Prerequisites:** `.planning/ROADMAP.md` exists
+**Produces:** Dry-run diff (default) or in-place ROADMAP.md rewrite (`--apply`)
+
+```bash
+node gsd-tools.cjs roadmap upgrade --convention milestone-prefixed         # dry-run
+node gsd-tools.cjs roadmap upgrade --convention milestone-prefixed --apply  # apply
+```
+
+---
+
 ## State Management Commands
 
 ### `state validate`
@@ -1446,3 +1519,12 @@ npm run lint:descriptions
 ```
 
 The check is also run as part of `npm test` via `tests/enh-2789-description-budget.test.cjs`.
+
+---
+
+## Related
+
+- [Configuration Reference](CONFIGURATION.md)
+- [CLI Tools Reference](CLI-TOOLS.md)
+- [Feature Reference](FEATURES.md)
+- [Docs index](README.md)

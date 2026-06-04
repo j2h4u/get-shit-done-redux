@@ -34,17 +34,18 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { cleanup } = require('./helpers.cjs');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PLANNING_WORKSPACE_CJS_PATH = path.join(
-  __dirname, '..', 'get-shit-done', 'bin', 'lib', 'planning-workspace.cjs'
+  __dirname, '..', 'gsd-core', 'bin', 'lib', 'planning-workspace.cjs'
 );
 
 const CLOCK_CJS_PATH = path.join(
-  __dirname, '..', 'get-shit-done', 'bin', 'lib', 'clock.cjs'
+  __dirname, '..', 'gsd-core', 'bin', 'lib', 'clock.cjs'
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -58,7 +59,7 @@ function makeTempDir() {
 }
 
 function removeTempDir(dir) {
-  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+  try { cleanup(dir); } catch { /* ignore */ }
 }
 
 /**

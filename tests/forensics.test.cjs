@@ -15,10 +15,11 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { cleanup } = require('./helpers.cjs');
 
 const repoRoot = path.resolve(__dirname, '..');
 const commandPath = path.join(repoRoot, 'commands', 'gsd', 'forensics.md');
-const workflowPath = path.join(repoRoot, 'get-shit-done', 'workflows', 'forensics.md');
+const workflowPath = path.join(repoRoot, 'gsd-core', 'workflows', 'forensics.md');
 
 describe('forensics command', () => {
   test('command file exists', () => {
@@ -220,7 +221,7 @@ describe('forensics fixture-based tests', () => {
   });
 
   afterEach(() => {
-    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanup(tmpDir);
   });
 
   test('detects missing artifacts in phase structure', () => {

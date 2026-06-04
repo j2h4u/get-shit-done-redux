@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { cleanup } = require('./helpers.cjs');
 
 const {
   validateWorkstreamName,
@@ -12,7 +13,7 @@ const {
   createMemoryPointerAdapter,
   getActiveWorkstream,
   setActiveWorkstream,
-} = require('../get-shit-done/bin/lib/active-workstream-store.cjs');
+} = require('../gsd-core/bin/lib/active-workstream-store.cjs');
 
 describe('active-workstream-store', () => {
   test('validateWorkstreamName accepts canonical names', () => {
@@ -119,7 +120,7 @@ describe('active-workstream-store', () => {
     } finally {
       if (savedSession !== undefined) process.env.GSD_SESSION_KEY = savedSession;
       else delete process.env.GSD_SESSION_KEY;
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      cleanup(tmpDir);
     }
   });
 
@@ -139,7 +140,7 @@ describe('active-workstream-store', () => {
       assert.equal(active, null);
       assert.equal(adapter.read(), null);
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      cleanup(tmpDir);
     }
   });
 

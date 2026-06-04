@@ -56,7 +56,8 @@ const path = require('node:path');
 const {
   INSTALL_MIGRATION_LOCK_NAME,
   runInstallerMigrations,
-} = require('../get-shit-done/bin/lib/installer-migrations.cjs');
+} = require('../gsd-core/bin/lib/installer-migrations.cjs');
+const { cleanup } = require('./helpers.cjs');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -64,10 +65,6 @@ const {
 
 function createTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-3670-'));
-}
-
-function cleanup(dir) {
-  fs.rmSync(dir, { recursive: true, force: true });
 }
 
 function lockPath(dir) {

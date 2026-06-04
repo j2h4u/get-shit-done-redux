@@ -32,13 +32,14 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { Worker } = require('worker_threads');
+const { cleanup } = require('./helpers.cjs');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STATE_CJS_PATH = path.join(
-  __dirname, '..', 'get-shit-done', 'bin', 'lib', 'state.cjs'
+  __dirname, '..', 'gsd-core', 'bin', 'lib', 'state.cjs'
 );
 
 const MINIMAL_STATE_MD = [
@@ -127,7 +128,7 @@ function makeTempDir() {
 }
 
 function removeTempDir(dir) {
-  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+  try { cleanup(dir); } catch { /* ignore */ }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

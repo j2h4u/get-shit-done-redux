@@ -19,7 +19,7 @@ const {
   learningsDelete,
   learningsCopyFromProject,
   learningsPrune,
-} = require('../get-shit-done/bin/lib/learnings.cjs');
+} = require('../gsd-core/bin/lib/learnings.cjs');
 const { runGsdTools, createTempProject, cleanup } = require('./helpers.cjs');
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
@@ -37,9 +37,7 @@ function makeTempDir() {
  * @param {string} dir
  */
 function cleanupDir(dir) {
-  if (fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+  cleanup(dir);
 }
 
 // ─── Write ───────────────────────────────────────────────────────────────────

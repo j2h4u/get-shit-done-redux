@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-30",
+  "generated": "2026-06-02",
   "families": {
     "agents": [
       "gsd-advisor-researcher",
@@ -257,6 +257,7 @@
       "verification-patterns.md",
       "verify-mvp-mode.md",
       "workstream-flag.md",
+      "worktree-branch-check.md",
       "worktree-path-safety.md"
     ],
     "cli_modules": [
@@ -275,6 +276,7 @@
       "command-routing-hub.cjs",
       "commands.cjs",
       "config-schema.cjs",
+      "config-types.cjs",
       "config.cjs",
       "configuration.cjs",
       "context-utilization.cjs",
@@ -295,6 +297,7 @@
       "installer-migrations.cjs",
       "intel.cjs",
       "learnings.cjs",
+      "legacy-cleanup.cjs",
       "milestone.cjs",
       "model-catalog.cjs",
       "model-profiles.cjs",
@@ -311,6 +314,7 @@
       "prompt-budget.cjs",
       "review-reviewer-selection.cjs",
       "roadmap-command-router.cjs",
+      "roadmap-upgrade.cjs",
       "roadmap.cjs",
       "runtime-artifact-layout.cjs",
       "runtime-homes.cjs",
@@ -328,6 +332,7 @@
       "task-command-router.cjs",
       "template.cjs",
       "uat.cjs",
+      "ui-safety-gate.cjs",
       "update-context.cjs",
       "validate-command-router.cjs",
       "validate.cjs",
@@ -352,7 +357,8 @@
       "gsd-statusline.js",
       "gsd-update-banner.js",
       "gsd-validate-commit.sh",
-      "gsd-workflow-guard.js"
+      "gsd-workflow-guard.js",
+      "gsd-worktree-path-guard.js"
     ]
   }
 }

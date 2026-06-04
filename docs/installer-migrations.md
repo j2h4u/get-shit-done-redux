@@ -121,9 +121,17 @@ Required fields:
 }
 ```
 
-The checksum is calculated from the migration definition. If an applied
-migration's checksum changes, the installer must warn and refuse to silently
-re-run it. Fix-forward migrations should use a new migration id.
+The checksum is calculated from the migration definition.
+
+An already-applied migration is never re-run, so a drifted checksum is
+tolerated at runtime: it is collected in `plan.checksumDrift` and reconciled
+into install state on the next write, rather than aborting the user's upgrade
+(this unblocks upgrades — see issue #670).
+
+The "shipped migration bodies are immutable" rule is enforced in CI by a
+committed checksum-baseline test in `tests/installer-migrations.test.cjs`.
+If you need to change the behaviour of a released migration, add a NEW
+fix-forward migration id instead of editing the shipped body.
 
 ## Migration Record
 
@@ -480,6 +488,17 @@ Every migration runner change should cover:
 This sequence keeps the first implementation small: the existing installer
 continues to materialize files, while the migration runner takes ownership of
 cleanup, classification, and reviewable destructive changes.
+
+## Shipped Migrations
+
+Each row corresponds to one migration record in `src/installer-migrations/`.
+
+| ID | File | Introduced In | Scopes | Destructive | Summary |
+|----|------|---------------|--------|-------------|---------|
+| `2026-05-11-first-time-baseline-scan` | `000-first-time-baseline.cts` | 1.50.0 | global, local | No | Records classification baseline for existing installs before destructive migrations run. |
+| `2026-05-11-legacy-orphan-files` | `001-legacy-orphan-files.cts` | 1.50.0 | global, local | Yes | Removes manifest-managed legacy orphan hook files (`hooks/gsd-notify.sh`, `hooks/statusline.js`) retired by the installer. |
+| `2026-05-11-codex-legacy-hooks-json` | `002-codex-legacy-hooks-json.cts` | 1.50.0 | global, local | Yes | Removes legacy GSD hook registrations from Codex `hooks.json` after the `config.toml` migration. |
+| `2026-06-02-rename-get-shit-done-to-gsd-core` | `003-rename-get-shit-done-to-gsd-core.cts` | 1.2.0 | global, local | Yes | Removes managed files from the stale `get-shit-done/` runtime directory after the rename to `gsd-core/` (#604). User-added files are preserved; emptied directories may remain (framework limitation). <!-- gsd-allow-legacy-name --> |
 
 ## Prior Art
 

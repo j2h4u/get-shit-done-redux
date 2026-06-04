@@ -6,7 +6,7 @@
 /**
  * Worktree Lifecycle Module — branch-check and workspace-safety tests
  *
- * Seam: get-shit-done/workflows/{execute-phase,execute-plan,quick}.md,
+ * Seam: gsd-core/workflows/{execute-phase,execute-plan,quick}.md,
  *       agents/gsd-executor.md
  *
  * Split from the consolidated 13→2 worktree cluster (≤800 LOC/file):
@@ -29,12 +29,13 @@ const os = require('node:os');
 const { cleanup } = require('./helpers.cjs');
 
 const REPO_ROOT = path.join(__dirname, '..');
-const EXECUTE_PHASE_PATH = path.join(REPO_ROOT, 'get-shit-done', 'workflows', 'execute-phase.md');
-const EXECUTE_PLAN_PATH = path.join(REPO_ROOT, 'get-shit-done', 'workflows', 'execute-plan.md');
-const QUICK_PATH = path.join(REPO_ROOT, 'get-shit-done', 'workflows', 'quick.md');
+const EXECUTE_PHASE_PATH = path.join(REPO_ROOT, 'gsd-core', 'workflows', 'execute-phase.md');
+const EXECUTE_PLAN_PATH = path.join(REPO_ROOT, 'gsd-core', 'workflows', 'execute-plan.md');
+const QUICK_PATH = path.join(REPO_ROOT, 'gsd-core', 'workflows', 'quick.md');
 const EXECUTOR_AGENT_PATH = path.join(REPO_ROOT, 'agents', 'gsd-executor.md');
-const DIAGNOSE_PATH = path.join(REPO_ROOT, 'get-shit-done', 'workflows', 'diagnose-issues.md');
-const GIT_INTEGRATION_PATH = path.join(REPO_ROOT, 'get-shit-done', 'references', 'git-integration.md');
+const DIAGNOSE_PATH = path.join(REPO_ROOT, 'gsd-core', 'workflows', 'diagnose-issues.md');
+const GIT_INTEGRATION_PATH = path.join(REPO_ROOT, 'gsd-core', 'references', 'git-integration.md');
+const WORKTREE_BRANCH_CHECK_FRAGMENT = path.join(REPO_ROOT, 'gsd-core', 'references', 'worktree-branch-check.md');
 
 const isWindows = process.platform === 'win32';
 
@@ -127,6 +128,71 @@ function findCommandIndex(statements, predicate) {
 }
 
 
+// ─── Canonical fragment: single source of truth ─────────────────────────────
+
+describe('canonical worktree-branch-check fragment is the single source of truth', () => {
+  const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
+  const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+  const block = blockMatch ? blockMatch[1] : '';
+
+  test('fragment file exists and contains a <worktree_branch_check> block', () => {
+    assert.ok(blockMatch, 'worktree-branch-check.md must contain a <worktree_branch_check> block');
+  });
+
+  test('fragment block is verify-only (no git reset)', () => {
+    assert.ok(!/git\s+reset/.test(block), 'fragment block must NOT run git reset — orchestrator owns base recovery (#48)');
+  });
+
+  test('fragment block does NOT contain reset --soft', () => {
+    assert.ok(!block.includes('reset --soft'), 'fragment block must not use reset --soft');
+  });
+
+  test('fragment block protected-ref alternation contains main', () => {
+    assert.ok(/\bmain\b/.test(block), 'fragment protected-ref alternation must include main');
+  });
+
+  test('fragment block protected-ref alternation contains master', () => {
+    assert.ok(/\bmaster\b/.test(block), 'fragment protected-ref alternation must include master');
+  });
+
+  test('fragment block protected-ref alternation contains develop', () => {
+    assert.ok(/\bdevelop\b/.test(block), 'fragment protected-ref alternation must include develop');
+  });
+
+  test('fragment block protected-ref alternation contains trunk', () => {
+    assert.ok(/\btrunk\b/.test(block), 'fragment protected-ref alternation must include trunk');
+  });
+
+  test('fragment block protected-ref alternation contains release', () => {
+    assert.ok(/\brelease\b/.test(block), 'fragment protected-ref alternation must include release');
+  });
+
+  test('fragment block positive allow-list matches ^worktree-agent- pattern', () => {
+    const allowListRe = /grep\s+-Eq?\s+'\^worktree-agent-/;
+    assert.ok(allowListRe.test(block), 'fragment block must enforce a positive allow-list matching ^worktree-agent-');
+  });
+
+  test('fragment block contains update-ref prohibition text', () => {
+    assert.ok(block.includes('update-ref'), 'fragment block must reference update-ref prohibition');
+  });
+
+  test('fragment block asserts exact base and fails closed with exit 42 (#48)', () => {
+    assert.ok(block.includes('git rev-parse HEAD') && block.includes('{EXPECTED_BASE}'), 'fragment must assert HEAD equals {EXPECTED_BASE} exactly (#48)');
+    assert.ok(/exit 42/.test(block), 'fragment must fail closed with exit 42 on mismatch (#48)');
+  });
+});
+
+// ─── #48: execute-plan mandate is verify-only ───────────────────────────────
+
+describe('bug #48: execute-plan.md worktree mandate is verify-only', () => {
+  test('execute-plan.md worktree mandate is verify-only (no reset --hard self-recovery) (#48)', () => {
+    const content = fs.readFileSync(EXECUTE_PLAN_PATH, 'utf-8');
+    assert.ok(content.includes('worktree-branch-check.md'), 'execute-plan.md must reference the canonical fragment');
+    assert.ok(!/hard-reset/.test(content) && !/reset --hard/.test(content), 'execute-plan.md must not describe reset --hard self-recovery — verify-only per #48');
+    assert.ok(/exit 42/.test(content), 'execute-plan.md mandate must specify fail-closed exit 42 (#48)');
+  });
+});
+
 const DISCOVERY_PIPELINE =
   'grep "^worktree " | grep "\\.claude/worktrees/agent-" | sed \'s/^worktree //\'';
 
@@ -160,55 +226,71 @@ function makeTempUpstreamRepo(prefix) {
 
 // ─── #2015: reset --hard not --soft ─────────────────────────────────────────
 
-describe('worktree_branch_check must use reset --hard not reset --soft (#2015)', () => {
+describe('verify-only: worktree_branch_check must NOT run git reset (#48, supersedes #2015)', () => {
 
   test('execute-phase.md worktree_branch_check does not use reset --soft', () => {
-    const content = fs.readFileSync(EXECUTE_PHASE_PATH, 'utf-8');
+    const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
 
-    // Extract the worktree_branch_check block
-    const blockMatch = content.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
-    assert.ok(blockMatch, 'execute-phase.md must contain a <worktree_branch_check> block');
+    // Extract the worktree_branch_check block from the canonical fragment
+    const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+    assert.ok(blockMatch, 'worktree-branch-check.md must contain a <worktree_branch_check> block');
 
     const block = blockMatch[1];
     assert.ok(
       !block.includes('reset --soft'),
-      'worktree_branch_check must not use reset --soft (leaves working tree files unchanged). Use reset --hard instead.'
+      'worktree_branch_check must not use reset --soft (leaves working tree files unchanged).'
     );
   });
 
-  test('execute-phase.md worktree_branch_check uses reset --hard for base correction', () => {
-    const content = fs.readFileSync(EXECUTE_PHASE_PATH, 'utf-8');
-    const blockMatch = content.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
-    assert.ok(blockMatch, 'execute-phase.md must contain a <worktree_branch_check> block');
+  test('verify-only: execute-phase.md worktree_branch_check must not run git reset at all (#48, supersedes #2015)', () => {
+    const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
+    const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+    assert.ok(blockMatch, 'worktree-branch-check.md must contain a <worktree_branch_check> block');
 
     const block = blockMatch[1];
     assert.ok(
-      block.includes('reset --hard'),
-      'worktree_branch_check must use reset --hard to correctly reset both HEAD and working tree to the expected base'
+      !/git\s+reset/.test(block),
+      'worktree_branch_check must NOT run git reset — orchestrator owns base recovery (#48, supersedes #2015)'
     );
   });
 
   test('quick.md worktree_branch_check does not use reset --soft', () => {
-    const content = fs.readFileSync(QUICK_PATH, 'utf-8');
-    const blockMatch = content.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
-    assert.ok(blockMatch, 'quick.md must contain a <worktree_branch_check> block');
+    const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
+    const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+    assert.ok(blockMatch, 'worktree-branch-check.md must contain a <worktree_branch_check> block');
 
     const block = blockMatch[1];
     assert.ok(
       !block.includes('reset --soft'),
-      'quick.md worktree_branch_check must not use reset --soft. Use reset --hard instead.'
+      'quick.md worktree_branch_check must not use reset --soft.'
     );
   });
 
-  test('quick.md worktree_branch_check uses reset --hard for base correction', () => {
-    const content = fs.readFileSync(QUICK_PATH, 'utf-8');
-    const blockMatch = content.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
-    assert.ok(blockMatch, 'quick.md must contain a <worktree_branch_check> block');
+  test('verify-only: quick.md worktree_branch_check must not run git reset at all (#48, supersedes #2015)', () => {
+    const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
+    const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+    assert.ok(blockMatch, 'worktree-branch-check.md must contain a <worktree_branch_check> block');
 
     const block = blockMatch[1];
     assert.ok(
-      block.includes('reset --hard'),
-      'quick.md worktree_branch_check must use reset --hard to correctly reset both HEAD and working tree'
+      !/git\s+reset/.test(block),
+      'quick.md worktree_branch_check must NOT run git reset — orchestrator owns base recovery (#48, supersedes #2015)'
+    );
+  });
+
+  test('execute-phase.md references the canonical fragment', () => {
+    const content = fs.readFileSync(EXECUTE_PHASE_PATH, 'utf-8');
+    assert.ok(
+      content.includes('worktree-branch-check.md'),
+      'execute-phase.md must reference the canonical worktree-branch-check.md fragment'
+    );
+  });
+
+  test('quick.md references the canonical fragment', () => {
+    const content = fs.readFileSync(QUICK_PATH, 'utf-8');
+    assert.ok(
+      content.includes('worktree-branch-check.md'),
+      'quick.md must reference the canonical worktree-branch-check.md fragment'
     );
   });
 });
@@ -270,19 +352,24 @@ describe('bug-2075: worktree deletion safeguards', () => {
   });
 
   describe('Failure Mode A: worktree_branch_check audit across all worktree-spawning workflows', () => {
-    test('execute-phase.md has worktree_branch_check block with --hard reset', () => {
-      const content = fs.readFileSync(EXECUTE_PHASE_PATH, 'utf-8');
+    test('execute-phase.md has worktree_branch_check block (verify-only, no git reset) (#48)', () => {
+      const executePhaseContent = fs.readFileSync(EXECUTE_PHASE_PATH, 'utf-8');
+      assert.ok(
+        executePhaseContent.includes('worktree-branch-check.md'),
+        'execute-phase.md must reference the canonical worktree-branch-check.md fragment'
+      );
 
-      const blockMatch = content.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+      const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
+      const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
       assert.ok(
         blockMatch,
-        'execute-phase.md must contain a <worktree_branch_check> block'
+        'worktree-branch-check.md must contain a <worktree_branch_check> block'
       );
 
       const block = blockMatch[1];
       assert.ok(
-        block.includes('reset --hard'),
-        'execute-phase.md worktree_branch_check must use git reset --hard (not --soft)'
+        !/git\s+reset/.test(block),
+        'execute-phase.md worktree_branch_check must NOT run git reset — verify-only per #48'
       );
       assert.ok(
         !block.includes('reset --soft'),
@@ -290,19 +377,24 @@ describe('bug-2075: worktree deletion safeguards', () => {
       );
     });
 
-    test('quick.md has worktree_branch_check block with --hard reset', () => {
-      const content = fs.readFileSync(QUICK_PATH, 'utf-8');
+    test('quick.md has worktree_branch_check block (verify-only, no git reset) (#48)', () => {
+      const quickContent = fs.readFileSync(QUICK_PATH, 'utf-8');
+      assert.ok(
+        quickContent.includes('worktree-branch-check.md'),
+        'quick.md must reference the canonical worktree-branch-check.md fragment'
+      );
 
-      const blockMatch = content.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+      const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
+      const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
       assert.ok(
         blockMatch,
-        'quick.md must contain a <worktree_branch_check> block'
+        'worktree-branch-check.md must contain a <worktree_branch_check> block'
       );
 
       const block = blockMatch[1];
       assert.ok(
-        block.includes('reset --hard'),
-        'quick.md worktree_branch_check must use git reset --hard (not --soft)'
+        !/git\s+reset/.test(block),
+        'quick.md worktree_branch_check must NOT run git reset — verify-only per #48'
       );
       assert.ok(
         !block.includes('reset --soft'),
@@ -311,16 +403,19 @@ describe('bug-2075: worktree deletion safeguards', () => {
     });
 
     test('diagnose-issues.md has worktree_branch_check instruction for spawned agents', () => {
-      const content = fs.readFileSync(DIAGNOSE_PATH, 'utf-8');
-
+      const diagnoseContent = fs.readFileSync(DIAGNOSE_PATH, 'utf-8');
       assert.ok(
-        content.includes('worktree_branch_check'),
-        'diagnose-issues.md must include worktree_branch_check instruction for spawned debug agents'
+        diagnoseContent.includes('worktree-branch-check.md'),
+        'diagnose-issues.md must reference the canonical worktree-branch-check.md fragment for spawned debug agents'
       );
 
+      const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
+      const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+      assert.ok(blockMatch, 'worktree-branch-check.md must contain a <worktree_branch_check> block');
+      const block = blockMatch[1];
       assert.ok(
-        content.includes('reset --hard'),
-        'diagnose-issues.md worktree_branch_check must instruct agents to use git reset --hard'
+        !/git\s+reset/.test(block),
+        'diagnose-issues.md worktree_branch_check must NOT run git reset — verify-only per #48'
       );
     });
   });
@@ -489,7 +584,7 @@ describe('bug #2774 — worktree cleanup pipeline must not target the parent wor
       // workspace worktree + agent worktree under workspace's
       // `.claude/worktrees/agent-` namespace.
       const porcelain = [
-        'worktree /Users/dev/upstream/get-shit-done',
+        'worktree /Users/dev/upstream/gsd-core',
         'HEAD abc123',
         'branch refs/heads/main',
         '',
@@ -515,7 +610,7 @@ describe('bug #2774 — worktree cleanup pipeline must not target the parent wor
 
     test('selects nothing when no agent worktrees exist', () => {
       const porcelain = [
-        'worktree /Users/dev/upstream/get-shit-done',
+        'worktree /Users/dev/upstream/gsd-core',
         'HEAD abc123',
         'branch refs/heads/main',
         '',

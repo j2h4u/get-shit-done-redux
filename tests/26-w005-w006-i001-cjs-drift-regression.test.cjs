@@ -24,7 +24,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const { runGsdTools } = require('./helpers.cjs');
+const { runGsdTools, cleanup } = require('./helpers.cjs');
 
 function mkplanning(base) {
   const planningDir = path.join(base, '.planning');
@@ -59,7 +59,7 @@ function writeConfigJson(planningDir) {
 // Issue #26 reproducer (verbatim):
 //   mkdir -p .planning/phases/999.1-foo
 //   echo "# Roadmap" > .planning/ROADMAP.md
-//   node .claude/get-shit-done/bin/gsd-tools.cjs validate health
+//   node .claude/gsd-core/bin/gsd-tools.cjs validate health
 //   # Bug: emits W005 about 999.1-foo not following NN-name format
 //
 // verify.cjs must consume phaseDirNameRe from validate.cjs so
@@ -84,7 +84,7 @@ describe('Drift item W005 — phaseDirNameRe: 999.X-name dirs must not trigger W
     fs.mkdirSync(path.join(phasesDir, '999.1-foo'), { recursive: true });
   });
 
-  after(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+  after(() => { cleanup(tmpDir); });
 
   test('no W005 for 999.1-foo (multi-digit sub-phase prefix)', () => {
     const result = runGsdTools(['validate', 'health', '--json'], tmpDir);
@@ -96,7 +96,7 @@ describe('Drift item W005 — phaseDirNameRe: 999.X-name dirs must not trigger W
   });
 
   test('phaseDirNameRe is exported from validate.cjs', () => {
-    const gen = require('../get-shit-done/bin/lib/validate.cjs');
+    const gen = require('../gsd-core/bin/lib/validate.cjs');
     assert.ok(gen.phaseDirNameRe instanceof RegExp,
       'validate.cjs must export phaseDirNameRe as a RegExp');
     const re = gen.phaseDirNameRe;
@@ -159,7 +159,7 @@ describe('Drift item W006-archived — MILESTONE_ARCHIVE_DIR_RE and PHASE_TOKEN_
     );
   });
 
-  after(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+  after(() => { cleanup(tmpDir); });
 
   test('no W006 for Phase 64 archived under milestones/v1.0-phases/', () => {
     const result = runGsdTools(['validate', 'health', '--json'], tmpDir);
@@ -173,7 +173,7 @@ describe('Drift item W006-archived — MILESTONE_ARCHIVE_DIR_RE and PHASE_TOKEN_
   });
 
   test('MILESTONE_ARCHIVE_DIR_RE is exported and matches vN.N-phases dirs', () => {
-    const gen = require('../get-shit-done/bin/lib/validate.cjs');
+    const gen = require('../gsd-core/bin/lib/validate.cjs');
     assert.ok(gen.MILESTONE_ARCHIVE_DIR_RE instanceof RegExp,
       'validate.cjs must export MILESTONE_ARCHIVE_DIR_RE');
     const re = gen.MILESTONE_ARCHIVE_DIR_RE;
@@ -184,7 +184,7 @@ describe('Drift item W006-archived — MILESTONE_ARCHIVE_DIR_RE and PHASE_TOKEN_
   });
 
   test('PHASE_TOKEN_FROM_DIR_RE is exported and extracts phase tokens correctly', () => {
-    const gen = require('../get-shit-done/bin/lib/validate.cjs');
+    const gen = require('../gsd-core/bin/lib/validate.cjs');
     assert.ok(gen.PHASE_TOKEN_FROM_DIR_RE instanceof RegExp,
       'validate.cjs must export PHASE_TOKEN_FROM_DIR_RE');
     const re = gen.PHASE_TOKEN_FROM_DIR_RE;
@@ -227,7 +227,7 @@ describe('Drift item I001 — canonicalPlanStem: long PLAN stem matches short SU
     fs.writeFileSync(path.join(phaseDir, '68-01-SUMMARY.md'), '# Summary\n');
   });
 
-  after(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+  after(() => { cleanup(tmpDir); });
 
   test('no I001 when 68-01-scaffolding-PLAN.md matches 68-01-SUMMARY.md via canonicalPlanStem', () => {
     const result = runGsdTools(['validate', 'health', '--json'], tmpDir);
@@ -239,7 +239,7 @@ describe('Drift item I001 — canonicalPlanStem: long PLAN stem matches short SU
   });
 
   test('canonicalPlanStem is exported from validate.cjs', () => {
-    const gen = require('../get-shit-done/bin/lib/validate.cjs');
+    const gen = require('../gsd-core/bin/lib/validate.cjs');
     assert.strictEqual(typeof gen.canonicalPlanStem, 'function',
       'validate.cjs must export canonicalPlanStem as a function');
     assert.strictEqual(gen.canonicalPlanStem('68-01-scaffolding'), '68-01');

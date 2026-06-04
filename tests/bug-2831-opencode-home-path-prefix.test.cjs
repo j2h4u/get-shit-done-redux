@@ -27,6 +27,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { cleanup } = require('./helpers.cjs');
 
 let computePathPrefix;
 
@@ -118,7 +119,7 @@ describe('bug-2831: OpenCode pathPrefix uses absolute path on all platforms', ()
       const srcFile = path.join(srcCmdDir, 'autonomous.md');
       fs.writeFileSync(
         srcFile,
-        '---\nname: autonomous\n---\n<execution_context>\n@~/.claude/get-shit-done/workflows/autonomous.md\n@$HOME/.claude/get-shit-done/references/ui-brand.md\n</execution_context>\n'
+        '---\nname: autonomous\n---\n<execution_context>\n@~/.claude/gsd-core/workflows/autonomous.md\n@$HOME/.claude/gsd-core/references/ui-brand.md\n</execution_context>\n'
       );
 
       const homeDir = path.join(tmp, 'home').replace(/\\/g, '/');
@@ -148,7 +149,7 @@ describe('bug-2831: OpenCode pathPrefix uses absolute path on all platforms', ()
         `output should include absolute path with @ prefix; got:\n${content}`
       );
     } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
+      cleanup(tmp);
     }
   });
 });

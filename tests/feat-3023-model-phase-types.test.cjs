@@ -27,15 +27,15 @@ const path = require('node:path');
 
 const {
   resolveModelInternal,
-} = require('../get-shit-done/bin/lib/core.cjs');
+} = require('../gsd-core/bin/lib/core.cjs');
 const {
   AGENT_TO_PHASE_TYPE,
   VALID_PHASE_TYPES,
   MODEL_PROFILES,
-} = require('../get-shit-done/bin/lib/model-profiles.cjs');
-const { isValidConfigKey } = require('../get-shit-done/bin/lib/config-schema.cjs');
+} = require('../gsd-core/bin/lib/model-profiles.cjs');
+const { isValidConfigKey } = require('../gsd-core/bin/lib/config-schema.cjs');
 
-const { createTempDir } = require('./helpers.cjs');
+const { createTempDir, cleanup } = require('./helpers.cjs');
 const makeTmp = (prefix) => createTempDir(`gsd-3023-${prefix}-`);
 
 function writeConfig(projectDir, config) {
@@ -45,7 +45,7 @@ function writeConfig(projectDir, config) {
 }
 
 function rmr(p) {
-  try { fs.rmSync(p, { recursive: true, force: true }); } catch { /* noop */ }
+  cleanup(p);
 }
 
 // ─── Schema: AGENT_TO_PHASE_TYPE table + VALID_PHASE_TYPES ──────────────────
@@ -254,8 +254,8 @@ describe('#3023 resolver: models.<phase_type> overrides profile-based tier', () 
 
 // ─── #443 Unified effort: resolveEffortInternal + renderEffortForRuntime ────
 
-const { resolveEffortInternal } = require('../get-shit-done/bin/lib/core.cjs');
-const { renderEffortForRuntime } = require('../get-shit-done/bin/lib/model-catalog.cjs');
+const { resolveEffortInternal } = require('../gsd-core/bin/lib/core.cjs');
+const { renderEffortForRuntime } = require('../gsd-core/bin/lib/model-catalog.cjs');
 
 describe('#3023 + #443: unified effort resolver (resolveEffortInternal) for Codex', () => {
   let projectDir;

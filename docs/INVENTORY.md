@@ -8,6 +8,8 @@
 - This file enumerates every shipped surface across all six families (agents, commands, workflows, references, CLI modules, hooks). Broad docs may render narrative or curated subsets; when they disagree with the filesystem, this file and the directory listings are authoritative.
 - New surfaces added after v1.36.0 should land here first, then propagate to the broad docs. The drift-control tests in `tests/inventory-counts.test.cjs`, `tests/commands-doc-parity.test.cjs`, `tests/agents-doc-parity.test.cjs`, `tests/cli-modules-doc-parity.test.cjs`, `tests/hooks-doc-parity.test.cjs`, `tests/architecture-counts.test.cjs`, and `tests/command-count-sync.test.cjs` anchor the counts and roster contents against the filesystem.
 
+This is the authoritative roster of every shipped GSD Core surface. See the [docs index](README.md) to navigate by topic.
+
 ---
 
 ## Agents (33 shipped)
@@ -166,7 +168,7 @@ These six routers are descriptor-only entries that the model picks first; the bo
 
 ## Workflows (88 shipped)
 
-Full roster at `get-shit-done/workflows/*.md`. Workflows are thin orchestrators that commands reference internally; most are not read directly by end users. Rows below map each workflow file to its role (derived from the `<purpose>` block) and, where applicable, to the command that invokes it.
+Full roster at `gsd-core/workflows/*.md`. Workflows are thin orchestrators that commands reference internally; most are not read directly by end users. Rows below map each workflow file to its role (derived from the `<purpose>` block) and, where applicable, to the command that invokes it.
 
 | Workflow | Role | Invoked by |
 |----------|------|------------|
@@ -204,7 +206,7 @@ Full roster at `get-shit-done/workflows/*.md`. Workflows are thin orchestrators 
 | `forensics.md` | Forensics investigation of failed workflows — git, artifacts, and state analysis. | `/gsd-forensics` |
 | `graduation.md` | Cluster recurring LEARNINGS.md items across phases and surface HITL promotion candidates. | `transition.md` (graduation_scan step) |
 | `health.md` | Validate `.planning/` directory integrity and report actionable issues. | `/gsd-health` |
-| `help.md` | Display the complete GSD command reference. | `/gsd-help` |
+| `help.md` | Display the complete GSD Core command reference. | `/gsd-help` |
 | `import.md` | Ingest external plans with conflict detection against existing project decisions. | `/gsd-import` |
 | `inbox.md` | Triage open GitHub issues and PRs against project contribution templates. | `/gsd-inbox` |
 | `ingest-docs.md` | Scan a repo for mixed planning docs; classify, synthesize, and bootstrap or merge into `.planning/` with a conflicts report. | `/gsd-ingest-docs` |
@@ -262,9 +264,9 @@ Full roster at `get-shit-done/workflows/*.md`. Workflows are thin orchestrators 
 
 ---
 
-## References (62 shipped)
+## References (63 shipped)
 
-Full roster at `get-shit-done/references/*.md`. References are shared knowledge documents that workflows and agents `@-reference`. The groupings below match [`docs/ARCHITECTURE.md`](ARCHITECTURE.md#references-get-shit-donereferencesmd) — core, workflow, thinking-model clusters, and the modular planner decomposition.
+Full roster at `gsd-core/references/*.md`. References are shared knowledge documents that workflows and agents `@-reference`. The groupings below match [`docs/ARCHITECTURE.md`](ARCHITECTURE.md#references-gsd-corereferencesmd) — core, workflow, thinking-model clusters, and the modular planner decomposition.
 
 ### Core References
 
@@ -299,6 +301,7 @@ Full roster at `get-shit-done/references/*.md`. References are shared knowledge 
 | `scout-codebase.md` | Phase-type→codebase-map selection table for discuss-phase scout step (extracted via #2551). |
 | `revision-loop.md` | Plan revision iteration patterns. |
 | `universal-anti-patterns.md` | Universal anti-patterns to detect and avoid. |
+| `worktree-branch-check.md` | Canonical spawn-time worktree HEAD/base guard (worktree_branch_check): verify-only and fail-closed — per-agent-branch assertion, protected-ref refusal (#2924), and an exact-base assertion that halts with `exit 42` on mismatch so the orchestrator (worktree lifecycle owner) performs recovery (#48). Embedded into worktree sub-agent prompts at dispatch. |
 | `worktree-path-safety.md` | Worktree guard suite: HEAD assertion, cwd-drift sentinel (step 0a, #3097), and absolute-path guard (step 0b, #3099) — loaded into executor spawn prompts via `<execution_context>`. |
 | `artifact-types.md` | Planning artifact type definitions. |
 | `phase-argument-parsing.md` | Phase argument parsing conventions. |
@@ -313,6 +316,7 @@ Full roster at `get-shit-done/references/*.md`. References are shared knowledge 
 | `executor-examples.md` | Worked examples for the gsd-executor agent. |
 | `doc-conflict-engine.md` | Shared conflict-detection contract for ingest/import workflows. |
 | `execute-mvp-tdd.md` | Runtime gate semantics for execute-phase under MVP+TDD — pre-task failing-test verification, end-of-phase blocking review. |
+| `mvp-concepts.md` | Cross-reference index for the six MVP-related reference files; maps each file to its purpose and which workflow loads it. |
 | `verify-mvp-mode.md` | UAT framing rules for MVP-mode phases — user-flow-first ordering, deferred technical checks, user-story-format guard. |
 
 ### Sketch References
@@ -358,13 +362,13 @@ The `gsd-planner` agent is decomposed into a core agent plus reference modules t
 | `user-story-template.md` | User story format for MVP planning — "As a / I want to / So that" structured fields. |
 | `spidr-splitting.md` | SPIDR splitting decomposition rules for handling large user stories in MVP mode. |
 
-> **Subdirectory:** `get-shit-done/references/few-shot-examples/` contains additional few-shot examples (`plan-checker.md`, `verifier.md`) that are referenced from specific agents. These are not counted in the 62 top-level references.
+> **Subdirectory:** `gsd-core/references/few-shot-examples/` contains additional few-shot examples (`plan-checker.md`, `verifier.md`) that are referenced from specific agents. These are not counted in the 63 top-level references.
 
 ---
 
-## CLI Modules (78 shipped)
+## CLI Modules (82 shipped)
 
-Full listing: `get-shit-done/bin/lib/*.cjs`.
+Full listing: `gsd-core/bin/lib/*.cjs`.
 
 | Module | Responsibility |
 |--------|----------------|
@@ -384,6 +388,7 @@ Full listing: `get-shit-done/bin/lib/*.cjs`.
 | `commands.cjs` | Misc CLI commands (slug, timestamp, todos, scaffolding, stats) |
 | `config-schema.cjs` | Single source of truth for `VALID_CONFIG_KEYS` and dynamic key patterns; imported by both the validator and the config-schema-docs parity test |
 | `config.cjs` | `config.json` read/write, section initialization; imports validator from `config-schema.cjs` |
+| `config-types.cjs` | TypeScript type definitions for the `model_policy` config block — `ModelPolicyConfig`, `TierEntry`, `RuntimeTiers`; compiled from `src/config-types.cts` at publish time (ADR-457) |
 | `configuration.cjs` | Configuration Module — canonical config loading, legacy-key normalization, defaults merge, and explicit on-disk migration; source of truth for both SDK and CJS consumers |
 | `context-utilization.cjs` | Pure classifier for `gsd-health --context` — turns (tokensUsed, contextWindow) into a `{ percent, state }` triage result against the 60%/70% fracture-point thresholds (#2792) |
 | `core.cjs` | Error handling, output formatting, shared utilities, runtime fallbacks; compatibility re-exports for planning-workspace helpers |
@@ -403,6 +408,7 @@ Full listing: `get-shit-done/bin/lib/*.cjs`.
 | `installer-migrations.cjs` | Installer migration planning, artifact classification, install-state persistence, journaled apply, and rollback helpers |
 | `intel.cjs` | Codebase intel store backing `/gsd-map-codebase --query` and `gsd-intel-updater` |
 | `learnings.cjs` | Cross-phase learnings extraction for `/gsd-extract-learnings` |
+| `legacy-cleanup.cjs` | Detect and remove leftover get-shit-done-cc artifacts; exports `planLegacyCleanup` (pure scan) and `applyLegacyCleanup` (thin IO applier) that root out stale files from the old package across every GSD-managed runtime config directory (#607) |
 | `milestone.cjs` | Milestone archival, requirements marking |
 | `model-catalog.cjs` | CJS adapter over the shared model catalog JSON; exports canonical runtime tier defaults, agent profile maps, alias maps, and routing metadata for all CLI consumers |
 | `model-profiles.cjs` | Backward-compatible profile helpers derived from `model-catalog.cjs`; no longer owns its own model table |
@@ -419,6 +425,7 @@ Full listing: `get-shit-done/bin/lib/*.cjs`.
 | `prompt-budget.cjs` | Pure token-budget accounting for review prompts — estimates tokens, applies deterministic trim priority (head-shrink PROJECT.md, proportional plan truncation, drop context/research/requirements, hard-fail guard), returns structured metadata for `review.max_prompt_tokens` (#3081) |
 | `review-reviewer-selection.cjs` | Reviewer selection/normalization helpers for `/gsd-review` default reviewer policy and precedence |
 | `roadmap-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools roadmap` |
+| `roadmap-upgrade.cjs` | Migration tool for converting legacy `Phase N` entries to milestone-prefixed `Phase M-NN` convention; `computeMigrationPlan` + `applyMigration` with dry-run default and atomic rollback |
 | `roadmap.cjs` | ROADMAP.md parsing, phase extraction, plan progress |
 | `runtime-artifact-layout.cjs` | Runtime artifact layout module — resolves the artifact directory shapes (commands, agents, skills) for each supported runtime; single source of truth for per-runtime artifact placement (#3663) |
 | `runtime-name-policy.cjs` | Runtime name normalization policy — canonical token sanitization for runtime identifiers used in path construction and display |
@@ -436,6 +443,7 @@ Full listing: `get-shit-done/bin/lib/*.cjs`.
 | `task-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools task` |
 | `template.cjs` | Template selection and filling with variable substitution |
 | `uat.cjs` | UAT file parsing, verification debt tracking, audit-uat support |
+| `ui-safety-gate.cjs` | Shell-free word-boundary UI token detector (#3706, #3718); reads phase-section text from stdin, exits 0 (UI found) or 1 (no UI); also deployed to `gsd-core/bin/lib/` so the GSD installer ships it to `$RUNTIME_DIR` (#448) |
 | `update-context.cjs` | Pure install-context resolver for `/gsd:update` — runtime/scope/config-dir/version detection (LOCAL/GLOBAL/UNKNOWN) ported from update.md bash; backs `gsd-tools update-context` (#498) |
 | `validate-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools validate` |
 | `validate.cjs` | Pure phase variant normalization helpers (`phaseVariants`, `buildRoadmapPhaseVariants`, `buildNotStartedPhaseVariants`) used by `verify.cjs` for W006/W007 checks; no I/O, no async |
@@ -451,7 +459,7 @@ Full listing: `get-shit-done/bin/lib/*.cjs`.
 
 ---
 
-## Hooks (13 shipped)
+## Hooks (14 shipped)
 
 Full listing: `hooks/`.
 
@@ -466,6 +474,7 @@ Full listing: `hooks/`.
 | `gsd-workflow-guard.js` | `PreToolUse` | Detects file edits outside GSD workflow context (advisory, opt-in) |
 | `gsd-read-guard.js` | `PreToolUse` | Advisory guard preventing Edit/Write on unread files |
 | `gsd-read-injection-scanner.js` | `PostToolUse` | Scans tool Read results for prompt-injection patterns (v1.36+, PR #2201) |
+| `gsd-worktree-path-guard.js` | `PreToolUse` | Hard-blocks Edit/Write/MultiEdit with absolute paths outside the worktree root (PR #579, #260) |
 | `gsd-session-state.sh` | `PostToolUse` | Session-state tracking for shell-based runtimes |
 | `gsd-validate-commit.sh` | `PostToolUse` | Commit validation for conventional-commit enforcement |
 | `gsd-phase-boundary.sh` | `PostToolUse` | Phase-boundary detection for workflow transitions |
@@ -478,3 +487,9 @@ Full listing: `hooks/`.
 - When a new command, agent, workflow, reference, CLI module, or hook ships, update the corresponding section here before the release is cut.
 - The drift-guard tests under `tests/` (see "How To Use This File" above) assert that every shipped file is enumerated in this inventory. A new file without a matching row here will fail CI.
 - When the filesystem diverges from `docs/ARCHITECTURE.md` counts or from curated-subset docs (e.g. `docs/AGENTS.md`'s primary roster), this file is the source of truth.
+
+## Related
+
+- [Commands](COMMANDS.md) — user-facing command reference
+- [Architecture](ARCHITECTURE.md) — how the surfaces fit together
+- [docs index](README.md)

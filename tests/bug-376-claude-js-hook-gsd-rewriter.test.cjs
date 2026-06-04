@@ -27,6 +27,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { cleanup } = require('./helpers.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const INSTALL_PATH = path.join(REPO_ROOT, 'bin', 'install.js');
@@ -129,9 +130,7 @@ describe('bug #376 — Suite 1: Claude install rewrites /gsd: → /gsd- in hook 
   });
 
   after(() => {
-    if (tmpDir) {
-      fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-    }
+    cleanup(tmpDir);
   });
 
   test('1a: hooks/ directory is created by the Claude local install', () => {
@@ -194,7 +193,7 @@ describe('bug #376 — Suite 1: Claude install rewrites /gsd: → /gsd- in hook 
 // Note: Cursor does NOT install hooks/dist files (Cursor skips the hooks
 // install step entirely — see install.js gate around line 8829). The Cursor
 // /gsd: rewrite applies in `copyWithPathReplacement` to JS files under the
-// agent/skill tree (.cursor/get-shit-done/*.js etc). We verify that Cursor's
+// agent/skill tree (.cursor/gsd-core/*.js etc). We verify that Cursor's
 // installed .js files under .cursor/ have no /gsd: colon refs.
 // ---------------------------------------------------------------------------
 describe('bug #376 — Suite 2: Cursor install still rewrites /gsd: → /gsd- (regression)', () => {
@@ -206,9 +205,7 @@ describe('bug #376 — Suite 2: Cursor install still rewrites /gsd: → /gsd- (r
   });
 
   after(() => {
-    if (tmpDir) {
-      fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-    }
+    cleanup(tmpDir);
   });
 
   test('2a: .cursor/ directory is created by the Cursor local install', () => {

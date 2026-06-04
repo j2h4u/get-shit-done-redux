@@ -18,6 +18,8 @@ const {
   resolveRelativeDependency,
 } = require('../scripts/affected-tests-lib.cjs');
 
+const { cleanup } = require('./helpers.cjs');
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -177,22 +179,22 @@ test('resolveBaseRef prefers explicit env override', () => {
 
 // ---------------------------------------------------------------------------
 // NEW: Transitive test (RED against old code)
-// Fixture: tests/t.test.cjs -> ../get-shit-done/bin/lib/depA.cjs -> ./depB.cjs
-// Changed: get-shit-done/bin/lib/depB.cjs
+// Fixture: tests/t.test.cjs -> ../gsd-core/bin/lib/depA.cjs -> ./depB.cjs
+// Changed: gsd-core/bin/lib/depB.cjs
 // Expected: tests/t.test.cjs is selected
 // ---------------------------------------------------------------------------
 
 test('transitive: changing a deep dependency selects the test that depends on it', (t) => {
   const dir = makeFixture({
-    'get-shit-done/bin/lib/depB.cjs': `'use strict';\nmodule.exports = { b: 1 };\n`,
-    'get-shit-done/bin/lib/depA.cjs': `'use strict';\nconst depB = require('./depB.cjs');\nmodule.exports = { a: depB };\n`,
-    'tests/t.test.cjs': `'use strict';\nconst depA = require('../get-shit-done/bin/lib/depA.cjs');\n`,
+    'gsd-core/bin/lib/depB.cjs': `'use strict';\nmodule.exports = { b: 1 };\n`,
+    'gsd-core/bin/lib/depA.cjs': `'use strict';\nconst depB = require('./depB.cjs');\nmodule.exports = { a: depB };\n`,
+    'tests/t.test.cjs': `'use strict';\nconst depA = require('../gsd-core/bin/lib/depA.cjs');\n`,
   });
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => cleanup(dir));
 
   const reverseIndex = buildTransitiveReverseIndex(dir, ['tests/t.test.cjs']);
   const selected = pickAffectedTests(
-    ['get-shit-done/bin/lib/depB.cjs'],
+    ['gsd-core/bin/lib/depB.cjs'],
     ['tests/t.test.cjs'],
     reverseIndex,
   );
@@ -209,16 +211,16 @@ test('transitive: changing a deep dependency selects the test that depends on it
 
 test('adversarial(a): cycle depA<->depB — changing depA selects test, no hang', (t) => {
   const dir = makeFixture({
-    'get-shit-done/bin/lib/depA.cjs': `'use strict';\nconst depB = require('./depB.cjs');\nmodule.exports = {};\n`,
-    'get-shit-done/bin/lib/depB.cjs': `'use strict';\nconst depA = require('./depA.cjs');\nmodule.exports = {};\n`,
-    'tests/cycle.test.cjs': `'use strict';\nconst depA = require('../get-shit-done/bin/lib/depA.cjs');\n`,
+    'gsd-core/bin/lib/depA.cjs': `'use strict';\nconst depB = require('./depB.cjs');\nmodule.exports = {};\n`,
+    'gsd-core/bin/lib/depB.cjs': `'use strict';\nconst depA = require('./depA.cjs');\nmodule.exports = {};\n`,
+    'tests/cycle.test.cjs': `'use strict';\nconst depA = require('../gsd-core/bin/lib/depA.cjs');\n`,
   });
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => cleanup(dir));
 
   // Must complete without hanging
   const reverseIndex = buildTransitiveReverseIndex(dir, ['tests/cycle.test.cjs']);
   const selected = pickAffectedTests(
-    ['get-shit-done/bin/lib/depA.cjs'],
+    ['gsd-core/bin/lib/depA.cjs'],
     ['tests/cycle.test.cjs'],
     reverseIndex,
   );
@@ -232,9 +234,9 @@ test('adversarial(a): cycle depA<->depB — changing depA selects test, no hang'
 test('adversarial(b): missing require (gone file) — null resolve, no crash', (t) => {
   const dir = makeFixture({
     // Requires a file that does not exist
-    'tests/missing.test.cjs': `'use strict';\nconst x = require('../get-shit-done/bin/lib/gone.cjs');\n`,
+    'tests/missing.test.cjs': `'use strict';\nconst x = require('../gsd-core/bin/lib/gone.cjs');\n`,
   });
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => cleanup(dir));
 
   // Should not throw
   let reverseIndex;
@@ -244,7 +246,7 @@ test('adversarial(b): missing require (gone file) — null resolve, no crash', (
 
   // Changing the missing file produces no selection (it doesn't exist, so no dependents)
   const selected = pickAffectedTests(
-    ['get-shit-done/bin/lib/gone.cjs'],
+    ['gsd-core/bin/lib/gone.cjs'],
     ['tests/missing.test.cjs'],
     reverseIndex,
   );
@@ -255,14 +257,14 @@ test('adversarial(b): missing require (gone file) — null resolve, no crash', (
 
 test('adversarial(c): .json dependency — changing data.json selects the test', (t) => {
   const dir = makeFixture({
-    'get-shit-done/bin/lib/data.json': `{"key":"value"}`,
-    'tests/json.test.cjs': `'use strict';\nconst data = require('../get-shit-done/bin/lib/data.json');\n`,
+    'gsd-core/bin/lib/data.json': `{"key":"value"}`,
+    'tests/json.test.cjs': `'use strict';\nconst data = require('../gsd-core/bin/lib/data.json');\n`,
   });
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => cleanup(dir));
 
   const reverseIndex = buildTransitiveReverseIndex(dir, ['tests/json.test.cjs']);
   const selected = pickAffectedTests(
-    ['get-shit-done/bin/lib/data.json'],
+    ['gsd-core/bin/lib/data.json'],
     ['tests/json.test.cjs'],
     reverseIndex,
   );
@@ -275,15 +277,15 @@ test('adversarial(c): .json dependency — changing data.json selects the test',
 
 test('adversarial(d): re-export chain — changing depB selects the test that requires the re-exporter', (t) => {
   const dir = makeFixture({
-    'get-shit-done/bin/lib/depB.cjs': `'use strict';\nmodule.exports = { deep: true };\n`,
-    'get-shit-done/bin/lib/reexporter.cjs': `'use strict';\nmodule.exports = require('./depB.cjs');\n`,
-    'tests/reexport.test.cjs': `'use strict';\nconst x = require('../get-shit-done/bin/lib/reexporter.cjs');\n`,
+    'gsd-core/bin/lib/depB.cjs': `'use strict';\nmodule.exports = { deep: true };\n`,
+    'gsd-core/bin/lib/reexporter.cjs': `'use strict';\nmodule.exports = require('./depB.cjs');\n`,
+    'tests/reexport.test.cjs': `'use strict';\nconst x = require('../gsd-core/bin/lib/reexporter.cjs');\n`,
   });
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => cleanup(dir));
 
   const reverseIndex = buildTransitiveReverseIndex(dir, ['tests/reexport.test.cjs']);
   const selected = pickAffectedTests(
-    ['get-shit-done/bin/lib/depB.cjs'],
+    ['gsd-core/bin/lib/depB.cjs'],
     ['tests/reexport.test.cjs'],
     reverseIndex,
   );
@@ -310,15 +312,15 @@ test('adversarial(e): bare and node: specifiers are ignored', () => {
 test('adversarial(f): WIDEN — changing a src file with no test dependents widens to unit/all', (t) => {
   // orphan.cjs is a source file no test file requires (statically)
   const dir = makeFixture({
-    'get-shit-done/bin/lib/orphan.cjs': `'use strict';\nmodule.exports = {};\n`,
+    'gsd-core/bin/lib/orphan.cjs': `'use strict';\nmodule.exports = {};\n`,
     'tests/unrelated.test.cjs': `'use strict';\n// requires nothing\n`,
   });
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => cleanup(dir));
 
   const reverseIndex = buildTransitiveReverseIndex(dir, ['tests/unrelated.test.cjs']);
 
   // Verify orphan.cjs has no dependents in the index
-  const dependents = reverseIndex.get('get-shit-done/bin/lib/orphan.cjs');
+  const dependents = reverseIndex.get('gsd-core/bin/lib/orphan.cjs');
   assert.ok(
     !dependents || dependents.size === 0,
     'orphan.cjs must have no transitive test dependents',
@@ -326,7 +328,7 @@ test('adversarial(f): WIDEN — changing a src file with no test dependents wide
 
   // The widen backstop is tested via the WIDEN_SIGNAL attached to pickAffectedTests result
   const selected = pickAffectedTests(
-    ['get-shit-done/bin/lib/orphan.cjs'],
+    ['gsd-core/bin/lib/orphan.cjs'],
     ['tests/unrelated.test.cjs'],
     reverseIndex,
     { detectWiden: true },
@@ -342,15 +344,15 @@ test('adversarial(g): dynamic require in changed file with no static dependents 
   // dynamic.cjs uses a template literal require — not statically parseable
   // No test requires dynamic.cjs statically
   const dir = makeFixture({
-    'get-shit-done/bin/lib/dynamic.cjs': `'use strict';\nconst x = 'foo';\nconst m = require(\`./\${x}\`);\nmodule.exports = {};\n`,
+    'gsd-core/bin/lib/dynamic.cjs': `'use strict';\nconst x = 'foo';\nconst m = require(\`./\${x}\`);\nmodule.exports = {};\n`,
     'tests/unrelated.test.cjs': `'use strict';\n// does not require dynamic.cjs\n`,
   });
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => cleanup(dir));
 
   const reverseIndex = buildTransitiveReverseIndex(dir, ['tests/unrelated.test.cjs']);
 
   const selected = pickAffectedTests(
-    ['get-shit-done/bin/lib/dynamic.cjs'],
+    ['gsd-core/bin/lib/dynamic.cjs'],
     ['tests/unrelated.test.cjs'],
     reverseIndex,
     { detectWiden: true },
@@ -367,7 +369,7 @@ test('resolveRelativeDependency resolves .ts, .json extensions', (t) => {
     'src/helper.ts': `export const x = 1;\n`,
     'src/data.json': `{"k":1}`,
   });
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => cleanup(dir));
 
   const fromAbs = path.join(dir, 'tests/consumer.cjs');
 
@@ -444,7 +446,7 @@ test('regression(mixed-diff): widen plan covers integration suite; concrete matc
     'tests/server.integration.test.cjs': `'use strict';\nconst s = require('../bin/lib/server.cjs');\n`,
     'tests/unrelated.test.cjs': `'use strict';\n// requires nothing\n`,
   });
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => cleanup(dir));
 
   // Act: build graph over both test files
   const allTests = [
@@ -529,17 +531,17 @@ test('regression(delete-only-source): deleting a source file triggers widen, nev
   // must trigger the widen backstop — gone.cjs has no static dependents because
   // it was never built into the forward graph (it doesn't exist).
   const dir = makeFixture({
-    'get-shit-done/bin/lib/other.cjs': `'use strict';\nmodule.exports = {};\n`,
+    'gsd-core/bin/lib/other.cjs': `'use strict';\nmodule.exports = {};\n`,
     'tests/unrelated.test.cjs': `'use strict';\n// requires nothing from gone.cjs\n`,
   });
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => cleanup(dir));
 
   // Act
   const allTests = ['tests/unrelated.test.cjs'];
   const reverseIndex = buildTransitiveReverseIndex(dir, allTests);
 
   // gone.cjs does not exist in the fixture — simulates a delete-only PR.
-  const changedFiles = ['get-shit-done/bin/lib/gone.cjs'];
+  const changedFiles = ['gsd-core/bin/lib/gone.cjs'];
 
   const selected = pickAffectedTests(changedFiles, allTests, reverseIndex, { detectWiden: true });
 
@@ -588,11 +590,11 @@ test('regression(rename-stale-old-path): deleted old path triggers widen, protec
   // dependents → widen backstop fires → mode:suites (PR_FULL_SUITES).
   const dir = makeFixture({
     // newname.cjs exists; oldname.cjs intentionally absent (it was renamed away)
-    'get-shit-done/bin/lib/newname.cjs': `'use strict';\nmodule.exports = { v: 2 };\n`,
-    'tests/newname.test.cjs': `'use strict';\nconst x = require('../get-shit-done/bin/lib/newname.cjs');\n`,
+    'gsd-core/bin/lib/newname.cjs': `'use strict';\nmodule.exports = { v: 2 };\n`,
+    'tests/newname.test.cjs': `'use strict';\nconst x = require('../gsd-core/bin/lib/newname.cjs');\n`,
     'tests/unrelated.test.cjs': `'use strict';\n// no dependency on oldname or newname\n`,
   });
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => cleanup(dir));
 
   // Act
   const allTests = ['tests/newname.test.cjs', 'tests/unrelated.test.cjs'];
@@ -601,12 +603,12 @@ test('regression(rename-stale-old-path): deleted old path triggers widen, protec
   // changedFiles mirrors what --no-renames git diff emits for a rename:
   //   Delete(old) + Add(new)
   const changedFiles = [
-    'get-shit-done/bin/lib/oldname.cjs', // deleted old path — absent from disk
-    'get-shit-done/bin/lib/newname.cjs', // added new path — present on disk
+    'gsd-core/bin/lib/oldname.cjs', // deleted old path — absent from disk
+    'gsd-core/bin/lib/newname.cjs', // added new path — present on disk
   ];
 
   // Assert: oldname.cjs must have zero static dependents (not in graph)
-  const oldDependents = reverseIndex.get('get-shit-done/bin/lib/oldname.cjs');
+  const oldDependents = reverseIndex.get('gsd-core/bin/lib/oldname.cjs');
   assert.ok(
     !oldDependents || oldDependents.size === 0,
     `oldname.cjs must have no static dependents (absent from disk), got: ${JSON.stringify(oldDependents && [...oldDependents])}`,
@@ -646,7 +648,7 @@ test('regression(delete-only-test): deleting a test file does not trigger widen 
   const dir = makeFixture({
     'tests/surviving.test.cjs': `'use strict';\n// a plain surviving unit test\n`,
   });
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => cleanup(dir));
 
   // Act
   // allTests comes from the fixture's tests/ directory — gone.test.cjs is absent.
