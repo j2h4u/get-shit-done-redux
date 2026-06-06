@@ -287,6 +287,25 @@ node "$HOME/.claude/gsd-core/bin/gsd-tools.cjs" init`;
     assert.ok(!result.includes('$gsd-tools'), 'no $gsd-tools in file path');
   });
 
+  test('does not convert /gsd-core after shell parameter expansion', () => {
+    const input = `---
+name: gsd-test
+description: Test
+tools: Read
+---
+
+GSD_TOOLS="\${_GSD_RUNTIME_ROOT}/gsd-core/bin/gsd-tools.cjs"
+/gsd-plan-phase 9`;
+
+    const result = convertClaudeCommandToCodexSkill(input, 'gsd-test');
+    assert.ok(
+      result.includes('${_GSD_RUNTIME_ROOT}/gsd-core/bin/gsd-tools.cjs'),
+      'shell-expanded gsd-core path must be preserved'
+    );
+    assert.ok(!result.includes('${_GSD_RUNTIME_ROOT}$gsd-core'), 'no $gsd-core path corruption');
+    assert.ok(result.includes('$gsd-plan-phase 9'), 'real slash command still converts');
+  });
+
   test('removes /clear then: for Codex', () => {
     const input = `---
 name: gsd-test

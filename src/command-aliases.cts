@@ -273,6 +273,14 @@ export const INIT_COMMAND_ALIASES: CommandAlias[] = [
     "mutation": false
   },
   {
+    "canonical": "init.plan-review-convergence",
+    "aliases": [
+      "init plan-review-convergence"
+    ],
+    "subcommand": "plan-review-convergence",
+    "mutation": false
+  },
+  {
     "canonical": "init.new-project",
     "aliases": [
       "init new-project"

@@ -2802,7 +2802,7 @@ function convertSlashCommandsToCodexSkillMentions(content) {
   // Convert hyphen-style command references (workflow output) to Codex $ prefix.
   // Negative lookbehind excludes file paths like bin/gsd-tools.cjs where
   // the slash is preceded by a word char, dot, or another slash.
-  converted = converted.replace(/(?<![a-zA-Z0-9./])\/gsd-([a-z0-9-]+)/gi, (_, commandName) => {
+  converted = converted.replace(/(?<![a-zA-Z0-9./}])\/gsd-([a-z0-9-]+)(?![a-z0-9-]*\/)/gi, (_, commandName) => {
     return `$gsd-${String(commandName).toLowerCase()}`;
   });
   return converted;

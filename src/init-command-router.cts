@@ -69,6 +69,10 @@ function routeInitCommand({ init, args, cwd, raw, error }: RouteInitCommandOptio
         const namedArgs = parseNamedArgs(args, [], ['validate', 'tdd']);
         init.cmdInitPlanPhase(cwd, args[2], raw, { validate: namedArgs['validate'], tdd: namedArgs['tdd'] });
       },
+      'plan-review-convergence': () => {
+        const namedArgs = parseNamedArgs(args, [], ['validate', 'tdd']);
+        init.cmdInitPlanPhase(cwd, args[2], raw, { validate: namedArgs['validate'], tdd: namedArgs['tdd'] });
+      },
       'new-project': () => init.cmdInitNewProject(cwd, raw),
       'new-milestone': () => init.cmdInitNewMilestone(cwd, raw),
       quick: () => init.cmdInitQuick(cwd, args.slice(2).join(' '), raw),
