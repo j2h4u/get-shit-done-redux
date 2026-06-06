@@ -8250,14 +8250,19 @@ function install(isGlobal, runtime = 'claude', options = {}) {
   const dirName = getDirName(runtime);
   const src = path.join(__dirname, '..');
 
-  if (isKimi && !isGlobal) {
-    console.log(`  ${yellow}⚠${reset} Kimi local install is deferred for Phase 1.`);
-    console.log(`      No .kimi/skills or .agents/skills project artifacts were written.`);
-    console.log(`      Use ${cyan}--kimi --global${reset} for the Phase 1 runtime skeleton.`);
+  if (isKimi) {
+    const scopeLabel = isGlobal ? 'global' : 'local';
+    console.log(`  ${yellow}⚠${reset} Kimi ${scopeLabel} install is deferred for Phase 1.`);
+    if (isGlobal) {
+      console.log(`      No Kimi skills, agents, hooks, or workflow payload artifacts were written.`);
+    } else {
+      console.log(`      No .kimi/skills or .agents/skills project artifacts were written.`);
+    }
+    console.log(`      Phase 1 only registers Kimi selection, paths, and layout guards.`);
     return {
       runtime,
       skipped: true,
-      reason: 'kimi_local_deferred',
+      reason: isGlobal ? 'kimi_global_deferred' : 'kimi_local_deferred',
       configDir: null,
       settingsPath: null,
       settings: null,

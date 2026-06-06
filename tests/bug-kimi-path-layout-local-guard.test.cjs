@@ -138,4 +138,39 @@ describe('Kimi local install guard', () => {
       cleanup(tmpHome);
     }
   });
+
+  test('--kimi --global exits successfully without writing unconverted Kimi artifacts', () => {
+    const tmpProject = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-kimi-global-project-'));
+    const tmpConfig = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-kimi-global-config-'));
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-kimi-global-home-'));
+    try {
+      const result = spawnSync(
+        process.execPath,
+        [INSTALL_SCRIPT, '--kimi', '--global', '--config-dir', tmpConfig, '--no-sdk'],
+        {
+          cwd: tmpProject,
+          encoding: 'utf8',
+          env: installerEnv({ HOME: tmpHome, USERPROFILE: tmpHome }),
+        },
+      );
+
+      assert.strictEqual(
+        result.status,
+        0,
+        `expected --kimi --global skeleton guard to no-op successfully\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+      );
+      const combined = `${result.stdout}\n${result.stderr}`;
+      assert.match(combined, /Kimi global install/i);
+      assert.match(combined, /deferred/i);
+
+      assert.ok(!fs.existsSync(path.join(tmpConfig, 'skills')), 'must not write unconverted Kimi skills');
+      assert.ok(!fs.existsSync(path.join(tmpConfig, 'agents')), 'must not write unconverted Kimi agents');
+      assert.ok(!fs.existsSync(path.join(tmpConfig, 'gsd-core')), 'must not write workflow payloads as Kimi artifacts');
+      assert.ok(!fs.existsSync(path.join(tmpConfig, 'hooks')), 'must not write hooks under the Kimi root');
+    } finally {
+      cleanup(tmpProject);
+      cleanup(tmpConfig);
+      cleanup(tmpHome);
+    }
+  });
 });
