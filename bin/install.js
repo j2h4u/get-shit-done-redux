@@ -6686,6 +6686,7 @@ function _applyRuntimeRewrites(content, runtime, pathPrefix) {
  *     encodes the GSD namespace as its last segment (e.g. `commands/gsd`), in
  *     which case write as `${stem}.md` (directory IS the namespace).
  *   - agents: write as-is (files already carry their own `gsd-` prefix).
+ * For kimi-agents kind: recursively copy generated YAML/prompt files.
  */
 function _copyStaged(stagedDir, destDir, kind) {
   if (!fs.existsSync(stagedDir)) return;
@@ -6699,6 +6700,11 @@ function _copyStaged(stagedDir, destDir, kind) {
       const dest = path.join(destDir, entry.name);
       fs.cpSync(src, dest, { recursive: true });
     }
+    return;
+  }
+
+  if (kind.kind === 'kimi-agents') {
+    fs.cpSync(stagedDir, destDir, { recursive: true });
     return;
   }
 
@@ -6738,6 +6744,21 @@ function _copyStaged(stagedDir, destDir, kind) {
  */
 function _removeGsdEntries(destDir, kind) {
   if (!fs.existsSync(destDir)) return;
+  if (kind.kind === 'kimi-agents') {
+    for (const fileName of ['gsd.yaml', 'gsd.md']) {
+      fs.rmSync(path.join(destDir, fileName), { force: true });
+    }
+    const subagentsDir = path.join(destDir, 'subagents');
+    if (fs.existsSync(subagentsDir)) {
+      for (const entry of fs.readdirSync(subagentsDir, { withFileTypes: true })) {
+        if (!entry.isFile()) continue;
+        if (!entry.name.startsWith('gsd-')) continue;
+        if (!entry.name.endsWith('.yaml') && !entry.name.endsWith('.md')) continue;
+        fs.rmSync(path.join(subagentsDir, entry.name), { force: true });
+      }
+    }
+    return;
+  }
   if (kind.prefix === '') {
     // Whole-namespace removal (Hermes nested case — destSubpath is skills/gsd)
     // The directory itself is the GSD namespace, so remove it entirely.
@@ -8779,6 +8800,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
   if (isKimi && isGlobal) {
     installRuntimeArtifacts(runtime, targetDir, 'global', _resolvedProfile);
     const skillsDir = path.join(targetDir, 'skills');
+    const rootAgentPath = path.join(targetDir, 'agents', 'gsd.yaml');
     const count = fs.existsSync(skillsDir)
       ? fs.readdirSync(skillsDir, { withFileTypes: true })
           .filter(e => e.isDirectory() && e.name.startsWith('gsd-')).length
@@ -8788,11 +8810,18 @@ function install(isGlobal, runtime = 'claude', options = {}) {
     } else {
       throw new Error('Kimi global install produced no skills/gsd-* entries');
     }
+    if (fs.existsSync(rootAgentPath)) {
+      console.log(`  ${green}✓${reset} Generated Kimi root agent: ${rootAgentPath}`);
+      console.log(`      Launch with: kimi --agent-file ${rootAgentPath}`);
+    } else {
+      throw new Error('Kimi global install produced no agents/gsd.yaml');
+    }
     return {
       runtime,
       skipped: true,
-      reason: 'kimi_global_skills_only',
+      reason: 'kimi_global_skills_and_agents',
       configDir: targetDir,
+      agentPath: rootAgentPath,
       settingsPath: null,
       settings: null,
       statuslineCommand: null,
