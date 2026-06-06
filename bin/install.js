@@ -2179,7 +2179,7 @@ function convertClaudeCommandToKimiSkill(content, skillName, _runtime = null, cm
     names
   );
 
-  return `---\nname: ${kimiSkillName}\ndescription: ${yamlQuote(toSingleLine(description))}\n---\n${normalizedBody}`;
+  return `---\nname: ${kimiSkillName}\ndescription: ${yamlQuote(toSingleLine(description))}\n---\nInvoke this Kimi skill with \`/skill:${kimiSkillName}\`.\n\n${normalizedBody}`;
 }
 
 /**
@@ -8291,19 +8291,14 @@ function install(isGlobal, runtime = 'claude', options = {}) {
   const dirName = getDirName(runtime);
   const src = path.join(__dirname, '..');
 
-  if (isKimi) {
-    const scopeLabel = isGlobal ? 'global' : 'local';
-    console.log(`  ${yellow}⚠${reset} Kimi ${scopeLabel} install is deferred for Phase 1.`);
-    if (isGlobal) {
-      console.log(`      No Kimi skills, agents, hooks, or workflow payload artifacts were written.`);
-    } else {
-      console.log(`      No .kimi/skills or .agents/skills project artifacts were written.`);
-    }
-    console.log(`      Phase 1 only registers Kimi selection, paths, and layout guards.`);
+  if (isKimi && !isGlobal) {
+    console.log(`  ${yellow}⚠${reset} Kimi local install is deferred for Phase 2.`);
+    console.log(`      No .kimi/skills or .agents/skills project artifacts were written.`);
+    console.log(`      Project-level Kimi install semantics remain deferred.`);
     return {
       runtime,
       skipped: true,
-      reason: isGlobal ? 'kimi_global_deferred' : 'kimi_local_deferred',
+      reason: 'kimi_local_deferred',
       configDir: null,
       settingsPath: null,
       settings: null,
@@ -8454,6 +8449,31 @@ function install(isGlobal, runtime = 'claude', options = {}) {
     installerMigrationResult = null;
     rollback();
   };
+
+  if (isKimi && isGlobal) {
+    installRuntimeArtifacts(runtime, targetDir, 'global', _resolvedProfile);
+    const skillsDir = path.join(targetDir, 'skills');
+    const count = fs.existsSync(skillsDir)
+      ? fs.readdirSync(skillsDir, { withFileTypes: true })
+          .filter(e => e.isDirectory() && e.name.startsWith('gsd-')).length
+      : 0;
+    if (count > 0) {
+      console.log(`  ${green}✓${reset} Installed ${count} skills to skills/`);
+    } else {
+      throw new Error('Kimi global install produced no skills/gsd-* entries');
+    }
+    return {
+      runtime,
+      skipped: true,
+      reason: 'kimi_global_skills_only',
+      configDir: targetDir,
+      settingsPath: null,
+      settings: null,
+      statuslineCommand: null,
+      updateBannerCommand: null,
+      rollbackInstallerMigrations,
+    };
+  }
 
   // Save any locally modified GSD files before they get wiped.
   // The pristine context lets saveLocalPatches populate gsd-pristine/ via

@@ -305,9 +305,9 @@ function resolveRuntimeArtifactLayout(runtime: string, configDir: string, scope:
       break;
 
     case 'kimi':
-      // Phase 1 skeleton only: Kimi is recognized by the layout seam, but
-      // SKILL.md conversion and local project semantics are deferred.
-      kinds = [];
+      kinds = scope === 'global'
+        ? [skillsKind('skills', 'gsd-', 'convertClaudeCommandToKimiSkill', 'kimi', configDir)]
+        : [];
       break;
 
     case 'opencode':

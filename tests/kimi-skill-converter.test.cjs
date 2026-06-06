@@ -71,8 +71,8 @@ describe('convertClaudeCommandToKimiSkill', () => {
 
     assert.equal(
       (result.match(/\/skill:gsd-new-project/g) || []).length,
-      4,
-      'all supported source invocation forms are rewritten'
+      5,
+      'self invocation hint and all supported source invocation forms are emitted'
     );
     assert.ok(!result.includes('/gsd:new-project'), 'slash colon form is removed');
     assert.ok(!result.includes('gsd:new-project'), 'bare colon form is removed');
