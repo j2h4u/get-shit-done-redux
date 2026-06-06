@@ -29,6 +29,7 @@ const path = require('path');
 
 const COMMAND_PATH = path.join(__dirname, '..', 'commands', 'gsd', 'plan-review-convergence.md');
 const WORKFLOW_PATH = path.join(__dirname, '..', 'gsd-core', 'workflows', 'plan-review-convergence.md');
+const PLAN_PHASE_WORKFLOW_PATH = path.join(__dirname, '..', 'gsd-core', 'workflows', 'plan-phase.md');
 const SCHEMA_PATH = path.join(__dirname, '..', 'gsd-core', 'bin', 'lib', 'config-schema.cjs');
 const CONFIG_DOC_PATH = path.join(__dirname, '..', 'docs', 'CONFIGURATION.md');
 
@@ -267,6 +268,21 @@ describe('plan-review-convergence workflow: convergence loop (#2306)', () => {
     );
   });
 
+  test('workflow does not converge while actionable non-HIGH findings remain', () => {
+    assert.ok(
+      workflow.includes('current_actionable'),
+      'CYCLE_SUMMARY must include current_actionable so MEDIUM/LOW plan changes cannot be hidden in REVIEWS.md'
+    );
+    assert.ok(
+      workflow.includes('ACTIONABLE_COUNT == 0'),
+      'convergence must require ACTIONABLE_COUNT == 0, not only HIGH_COUNT == 0'
+    );
+    assert.ok(
+      workflow.includes('review-only instructions must not remain stranded in REVIEWS.md'),
+      'workflow must state that actionable review feedback has to be incorporated into PLAN.md before execution'
+    );
+  });
+
   test('workflow updates STATE.md on convergence', () => {
     assert.ok(
       workflow.includes('planned-phase') || workflow.includes('state'),
@@ -298,6 +314,21 @@ describe('plan-review-convergence workflow: CYCLE_SUMMARY contract definition (#
     assert.ok(
       workflow.includes('CYCLE_SUMMARY: current_high='),
       'review agent spawn prompt must define the CYCLE_SUMMARY: current_high=<N> output format (#2306-v2)'
+    );
+  });
+
+  test('review agent prompt defines current_actionable for MEDIUM/LOW plan changes', () => {
+    assert.ok(
+      workflow.includes('CYCLE_SUMMARY: current_high=<N> current_actionable=<M>'),
+      'review agent spawn prompt must define current_actionable alongside current_high'
+    );
+    assert.ok(
+      workflow.includes('Current Actionable Non-HIGH Findings'),
+      'review agent must list actionable MEDIUM/LOW findings separately from HIGH concerns'
+    );
+    assert.ok(
+      workflow.includes('MEDIUM/LOW findings already incorporated into the latest PLAN.md files'),
+      'contract must exclude non-HIGH findings already incorporated into PLAN.md'
     );
   });
 
@@ -336,6 +367,15 @@ describe('plan-review-convergence workflow: HIGH_LINES validation (#2306-v2)', (
       'workflow must warn when HIGH_COUNT > 0 but HIGH_LINES is empty (contract partially violated) (#2306-v2)'
     );
   });
+
+  test('workflow warns when ACTIONABLE_COUNT > 0 but actionable section is absent', () => {
+    assert.ok(
+      workflow.includes('ACTIONABLE_LINES') &&
+      workflow.includes('Current Actionable Non-HIGH Findings') &&
+      workflow.includes('actionable non-HIGH findings'),
+      'workflow must warn when ACTIONABLE_COUNT > 0 but actionable findings section is empty'
+    );
+  });
 });
 
 // ─── Workflow: stall detection ─────────────────────────────────────────────
@@ -345,8 +385,8 @@ describe('plan-review-convergence workflow: stall detection (#2306)', () => {
 
   test('workflow tracks previous HIGH count to detect stalls', () => {
     assert.ok(
-      workflow.includes('prev_high_count') || workflow.includes('prev_HIGH'),
-      'workflow must track the previous cycle HIGH count for stall detection'
+      workflow.includes('prev_unresolved_review_count') || workflow.includes('prev_high_count') || workflow.includes('prev_HIGH'),
+      'workflow must track the previous cycle unresolved review count for stall detection'
     );
   });
 
@@ -400,8 +440,8 @@ describe('plan-review-convergence workflow: stall detection behavioral (#2306)',
 
   test('workflow surfaces stall warning when prev_high_count equals current HIGH_COUNT', () => {
     assert.ok(
-      workflow.includes('prev_high_count') || workflow.includes('prev_HIGH'),
-      'workflow must track prev_high_count across cycles'
+      workflow.includes('prev_unresolved_review_count') || workflow.includes('prev_high_count') || workflow.includes('prev_HIGH'),
+      'workflow must track unresolved review count across cycles'
     );
     assert.ok(
       workflow.includes('HIGH_COUNT >= prev_high_count') ||
@@ -471,6 +511,48 @@ describe('plan-review-convergence workflow: success criteria (#2306-v2)', () => 
     assert.ok(
       !successBlock.includes('grep HIGHs'),
       'success_criteria must NOT say "grep HIGHs" — that was the false-stall bug (#2306-v2)'
+    );
+  });
+
+  test('success criteria requires both HIGH and actionable counts to be zero', () => {
+    const successBlock = workflow.slice(workflow.lastIndexOf('<success_criteria>'));
+    assert.ok(
+      successBlock.includes('current_high=<N> current_actionable=<M>'),
+      'success_criteria must preserve the two-count CYCLE_SUMMARY contract'
+    );
+    assert.ok(
+      successBlock.includes('ACTIONABLE_COUNT == 0'),
+      'success_criteria must require ACTIONABLE_COUNT == 0 before convergence'
+    );
+  });
+});
+
+describe('plan-phase --reviews incorporation contract (#2306-actionable)', () => {
+  const workflow = fs.readFileSync(PLAN_PHASE_WORKFLOW_PATH, 'utf8');
+
+  test('planner prompt tells --reviews mode to incorporate REVIEWS.md into PLAN.md', () => {
+    assert.ok(
+      workflow.includes('<review_incorporation_contract>'),
+      'plan-phase must have an explicit review incorporation contract'
+    );
+    assert.ok(
+      workflow.includes('REVIEWS.md is feedback to incorporate into PLAN.md'),
+      'REVIEWS.md must be treated as replan feedback, not a second execution contract'
+    );
+    assert.ok(
+      workflow.includes('The executor primarily consumes PLAN.md'),
+      'contract must state why findings need to move into PLAN.md'
+    );
+  });
+
+  test('plan checker verifies actionable review findings are not stranded in REVIEWS.md', () => {
+    assert.ok(
+      workflow.includes('verify actionable findings are incorporated into PLAN.md'),
+      'plan checker must read REVIEWS.md in --reviews mode'
+    );
+    assert.ok(
+      workflow.includes('Fail with `## ISSUES FOUND` if a reviewer finding still exists only in REVIEWS.md'),
+      'plan checker must reject plans that leave actionable review findings outside PLAN.md'
     );
   });
 });

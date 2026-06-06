@@ -952,6 +952,16 @@ Output consumed by /gsd:execute-phase. Plans need:
 - **"Artifacts this phase produces" section (MANDATORY)** — list every symbol this phase creates: decorators, classes, functions, CLI flags, struct/dataclass fields, new file paths. The plan-review-convergence source-grounding pass reads this section to exclude newly-created symbols from drift verification; omitting it causes new symbols to be flagged for acknowledgement.
 </downstream_consumer>
 
+<review_incorporation_contract>
+When **Mode is reviews**, REVIEWS.md is feedback to incorporate into PLAN.md, not a second execution contract.
+
+The executor primarily consumes PLAN.md. For every current actionable review finding in REVIEWS.md:
+- Update the relevant PLAN.md task, `<action>`, `<acceptance_criteria>`, `<verify>`, `must_haves`, threat model, or artifact list with a concrete executable contract; OR
+- Document an explicit deferral/rejection rationale in the relevant PLAN.md when the finding should not change execution.
+
+Do not leave required implementation details, verification commands, stale-path corrections, or contract changes only in REVIEWS.md, SUMMARY.md, PATTERNS.md, or reviewer prose. A clean `--reviews` replan means the next executor can satisfy the reviewed intent by reading PLAN.md plus the normal plan context.
+</review_incorporation_contract>
+
 <deep_work_rules>
 ## Anti-Shallow Execution Rules (MANDATORY)
 
@@ -1241,6 +1251,7 @@ Checker prompt:
 - {requirements_path} (Requirements)
 - {context_path} (USER DECISIONS from /gsd:discuss-phase)
 - {research_path} (Technical Research — includes Validation Architecture)
+- {reviews_path} (Cross-AI Review Feedback - if --reviews; verify actionable findings are incorporated into PLAN.md)
 </files_to_read>
 
 ${AGENT_SKILLS_CHECKER}
@@ -1249,6 +1260,8 @@ ${AGENT_SKILLS_CHECKER}
 
 **Project instructions:** Read ./CLAUDE.md if exists — verify plans honor project guidelines
 **Project skills:** Check .claude/skills/ or .agents/skills/ directory (if either exists) — verify plans account for project skill rules
+
+**If Mode is reviews:** Verify that actionable findings from REVIEWS.md are now represented in executable PLAN.md content or explicitly deferred/rejected in the relevant PLAN.md. Fail with `## ISSUES FOUND` if a reviewer finding still exists only in REVIEWS.md and would be invisible to /gsd:execute-phase.
 </verification_context>
 
 <expected_output>
