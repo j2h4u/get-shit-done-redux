@@ -14,9 +14,11 @@
  *   cline   — Rules-based; commands are embedded in .clinerules. Cline does
  *             not use a skills/ directory. getGlobalSkillDir() returns null
  *             for cline so the caller can emit an appropriate warning.
- *   kimi    — Agent Skills are discovered from Kimi's generic user root:
- *             ~/.agents/skills. ~/.kimi-code/skills is compatible with
- *             Kimi Code CLI and can be selected with KIMI_CONFIG_DIR.
+ *   kimi    — Agent Skills are discovered from Kimi's generic user roots:
+ *             ~/.config/agents/skills (recommended) then ~/.agents/skills,
+ *             with Kimi selecting the first existing generic skills directory.
+ *             ~/.kimi-code/skills is brand-specific and can be selected with
+ *             KIMI_CONFIG_DIR.
  */
 
 import os from 'node:os';
@@ -33,6 +35,12 @@ function expandTilde(p: string): string {
 }
 
 export interface ResolveAntigravityOpts {
+  env?: Record<string, string | undefined>;
+  home?: string;
+  existsSync?: (p: string) => boolean;
+}
+
+export interface ResolveKimiOpts {
   env?: Record<string, string | undefined>;
   home?: string;
   existsSync?: (p: string) => boolean;
@@ -59,6 +67,34 @@ export function resolveAntigravityGlobalDir(opts: ResolveAntigravityOpts = {}): 
   }
 
   return path.join(base, 'antigravity');
+}
+
+/**
+ * Resolve Kimi's generic user root using Kimi CLI's documented first-existing
+ * generic skills directory policy:
+ *
+ *   1. ~/.config/agents/skills  (recommended)
+ *   2. ~/.agents/skills
+ *
+ * If neither generic skills directory exists yet, install to the recommended
+ * ~/.config/agents root so the generated skills become the first generic
+ * candidate Kimi discovers.
+ */
+export function resolveKimiGlobalDir(opts: ResolveKimiOpts = {}): string {
+  const env: Record<string, string | undefined> = opts.env ?? process.env;
+  const home = opts.home ?? os.homedir();
+  const existsSyncFn = opts.existsSync ?? fs.existsSync;
+
+  if (env['KIMI_CONFIG_DIR']) return expandTilde(env['KIMI_CONFIG_DIR']);
+
+  const recommendedRoot = path.join(home, '.config', 'agents');
+  const fallbackRoot = path.join(home, '.agents');
+  const candidates = [recommendedRoot, fallbackRoot];
+  for (const candidate of candidates) {
+    if (existsSyncFn(path.join(candidate, 'skills'))) return candidate;
+  }
+
+  return recommendedRoot;
 }
 
 /**
@@ -130,8 +166,7 @@ export function getGlobalConfigDir(runtime: string): string {
 
     // ── Kimi CLI (generic agents user root) ────────────────────────────────
     case 'kimi': {
-      if (env['KIMI_CONFIG_DIR']) return expandTilde(env['KIMI_CONFIG_DIR']);
-      return path.join(home, '.agents');
+      return resolveKimiGlobalDir({ env, home });
     }
 
     // ── OpenCode (XDG) ───────────────────────────────────────────────────────

@@ -19,6 +19,7 @@ const {
   getGlobalConfigDir,
   getGlobalSkillsBase,
   getGlobalSkillDir,
+  resolveKimiGlobalDir,
 } = require(path.join(ROOT, 'gsd-core', 'bin', 'lib', 'runtime-homes.cjs'));
 const {
   resolveRuntimeArtifactLayout,
@@ -47,25 +48,56 @@ function withEnv(updates, fn) {
 }
 
 describe('Kimi runtime homes', () => {
-  test('canonical global skills base is ~/.agents/skills, not ~/.kimi-code/skills', () => {
-    withEnv({ KIMI_CONFIG_DIR: undefined, XDG_CONFIG_HOME: undefined }, () => {
+  test('default Kimi global root is recommended ~/.config/agents when no generic skills root exists', () => {
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-kimi-home-default-'));
+    try {
+      withEnv({ KIMI_CONFIG_DIR: undefined, XDG_CONFIG_HOME: undefined, HOME: tmpHome, USERPROFILE: tmpHome }, () => {
+        assert.strictEqual(
+          getGlobalConfigDir('kimi'),
+          path.join(tmpHome, '.config', 'agents'),
+        );
+        assert.strictEqual(
+          getGlobalSkillsBase('kimi'),
+          path.join(tmpHome, '.config', 'agents', 'skills'),
+        );
+        assert.strictEqual(
+          getGlobalSkillDir('kimi', 'gsd-help'),
+          path.join(tmpHome, '.config', 'agents', 'skills', 'gsd-help'),
+        );
+        assert.notStrictEqual(
+          getGlobalSkillsBase('kimi'),
+          path.join(tmpHome, '.kimi-code', 'skills'),
+        );
+      });
+    } finally {
+      cleanup(tmpHome);
+    }
+  });
+
+  test('Kimi root resolution follows first-existing generic skills directory order', () => {
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-kimi-home-existing-'));
+    try {
+      const recommendedRoot = path.join(tmpHome, '.config', 'agents');
+      const fallbackRoot = path.join(tmpHome, '.agents');
       assert.strictEqual(
-        getGlobalConfigDir('kimi'),
-        path.join(os.homedir(), '.agents'),
+        resolveKimiGlobalDir({ env: {}, home: tmpHome, existsSync: fs.existsSync }),
+        recommendedRoot,
       );
+
+      fs.mkdirSync(path.join(fallbackRoot, 'skills'), { recursive: true });
       assert.strictEqual(
-        getGlobalSkillsBase('kimi'),
-        path.join(os.homedir(), '.agents', 'skills'),
+        resolveKimiGlobalDir({ env: {}, home: tmpHome, existsSync: fs.existsSync }),
+        fallbackRoot,
       );
+
+      fs.mkdirSync(path.join(recommendedRoot, 'skills'), { recursive: true });
       assert.strictEqual(
-        getGlobalSkillDir('kimi', 'gsd-help'),
-        path.join(os.homedir(), '.agents', 'skills', 'gsd-help'),
+        resolveKimiGlobalDir({ env: {}, home: tmpHome, existsSync: fs.existsSync }),
+        recommendedRoot,
       );
-      assert.notStrictEqual(
-        getGlobalSkillsBase('kimi'),
-        path.join(os.homedir(), '.kimi-code', 'skills'),
-      );
-    });
+    } finally {
+      cleanup(tmpHome);
+    }
   });
 
   test('KIMI_CONFIG_DIR can select the brand-specific ~/.kimi-code root', () => {
@@ -80,16 +112,55 @@ describe('Kimi runtime homes', () => {
   });
 
   test('XDG_CONFIG_HOME does not change Kimi default root', () => {
-    withEnv({ KIMI_CONFIG_DIR: undefined, XDG_CONFIG_HOME: '/tmp/xdg-home' }, () => {
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-kimi-home-xdg-'));
+    try {
+      withEnv({ KIMI_CONFIG_DIR: undefined, XDG_CONFIG_HOME: '/tmp/xdg-home', HOME: tmpHome, USERPROFILE: tmpHome }, () => {
+        assert.strictEqual(
+          getGlobalConfigDir('kimi'),
+          path.join(tmpHome, '.config', 'agents'),
+        );
+        assert.strictEqual(
+          getConfigDirFromHome('kimi', true),
+          "'.config', 'agents'",
+        );
+      });
+    } finally {
+      cleanup(tmpHome);
+    }
+  });
+
+  test('Kimi global install reuses existing ~/.agents/skills when recommended root is absent', () => {
+    const tmpProject = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-kimi-existing-agents-project-'));
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-kimi-existing-agents-home-'));
+    try {
+      fs.mkdirSync(path.join(tmpHome, '.agents', 'skills'), { recursive: true });
+      const result = spawnSync(
+        process.execPath,
+        [INSTALL_SCRIPT, '--kimi', '--global', '--no-sdk'],
+        {
+          cwd: tmpProject,
+          encoding: 'utf8',
+          env: installerEnv({ HOME: tmpHome, USERPROFILE: tmpHome }),
+        },
+      );
+
       assert.strictEqual(
-        getGlobalConfigDir('kimi'),
-        path.join(os.homedir(), '.agents'),
+        result.status,
+        0,
+        `expected --kimi --global to reuse existing ~/.agents/skills\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
       );
       assert.strictEqual(
-        getConfigDirFromHome('kimi', true),
-        "'.agents'",
+        fs.existsSync(path.join(tmpHome, '.agents', 'skills', 'gsd-new-project', 'SKILL.md')),
+        true,
       );
-    });
+      assert.strictEqual(
+        fs.existsSync(path.join(tmpHome, '.config', 'agents', 'skills', 'gsd-new-project', 'SKILL.md')),
+        false,
+      );
+    } finally {
+      cleanup(tmpProject);
+      cleanup(tmpHome);
+    }
   });
 });
 
