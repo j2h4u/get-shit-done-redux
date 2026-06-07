@@ -96,11 +96,31 @@ npx @opengsd/gsd-core@latest --gemini --global
 
 Skills land in `~/.gemini/`. The installer rewrites all command bodies to Gemini's colon namespace (`/gsd:update`, `/gsd:config`, etc.). Restart Gemini CLI after install.
 
+The installer also enriches the generated TOML commands with two native Gemini custom-command features:
+
+- **`{{args}}` interpolation** — every command that references arguments inline is emitted with Gemini's `{{args}}` placeholder (translated from Claude's `$ARGUMENTS`), so flags and free-text you type after the command name are interpolated into the prompt body rather than ignored.
+- **`!{...}` live-state injection** — `/gsd:progress` injects the current contents of `.planning/STATE.md` via a fixed `!{cat .planning/STATE.md 2>/dev/null}` shell block, giving Gemini live project state without relying on session memory. The shell block contains no interpolated input, so there is no injection risk; Gemini still shows its standard confirmation dialog the first time the command runs in a session.
+
 **Override the install directory:**
 
 ```bash
 GEMINI_CONFIG_DIR=~/.gemini-alt npx @opengsd/gsd-core@latest --gemini --global
 ```
+
+---
+
+### Gemini CLI — native extension install (#775)
+
+GSD also ships a `gemini-extension.json` extension manifest, so you can manage GSD through Gemini's own extension lifecycle and see it in `gemini extensions list`:
+
+```bash
+gemini extensions install https://github.com/open-gsd/gsd-core   # install
+gemini extensions update gsd-core                                # update
+gemini extensions uninstall gsd-core                             # remove
+gemini extensions link /path/to/gsd-core                         # dev: symlink a checkout
+```
+
+The extension loads GSD's operating context (`GEMINI.md`) into every session and gives you the discoverable install/update/remove lifecycle. The `/gsd:*` slash commands, agents, and hooks are installed separately by `npx @opengsd/gsd-core --gemini --global` (above). The two paths are complementary and additive — neither replaces the other, and slash-command projection into the extension is a planned follow-up.
 
 ---
 
@@ -145,6 +165,19 @@ npx @opengsd/gsd-core@latest --codex --global
 Skills land in `~/.codex/skills/gsd-*/SKILL.md`. Agents are written with per-agent TOML entries in `config.toml`. Restart Codex (or run `codex --reload`) after install.
 
 **Minimum supported version:** Codex CLI 0.130.0. Earlier versions had additional skill-root scanning that can produce duplicate listings.
+
+**Hook coverage**
+
+GSD registers the following Codex hook events automatically on install (requires Codex CLI 0.137.0+ for the stable hook-event schema):
+
+| Event | Hook | Purpose |
+|---|---|---|
+| `SessionStart` | `gsd-check-update.js` | Update check at session open; Windows installs also emit a `commandWindows` field pointing to the `.cmd` shim so Codex picks the correct executor on Windows without requiring per-OS config regeneration |
+| `SubagentStart` | `gsd-context-monitor.js` | Inject context / GSD_AGENT_NAME awareness at subagent open |
+| `Stop` | `gsd-context-monitor.js` | Context headroom tracking before model stop |
+| `PostToolUse` | `gsd-context-monitor.js` | Mirror the context-monitor coverage available in Claude Code |
+
+All registered hooks are managed by GSD and are removed cleanly on `--uninstall`.
 
 ---
 
@@ -303,7 +336,7 @@ directory is created for local scope.
 npx @opengsd/gsd-core@latest --codebuddy --global
 ```
 
-Skills land in `~/.codebuddy/skills/gsd-*/SKILL.md`.
+GSD installs four surfaces. Slash command definitions land in `~/.codebuddy/commands/gsd-*.md` and appear as `/gsd-help`, `/gsd-phase`, `/gsd-ship`, etc. in the `/` menu. Subagents land in `~/.codebuddy/agents/gsd-*.md`. Skills land in `~/.codebuddy/skills/gsd-*/SKILL.md` — emitted with `user-invocable: false` so they stay out of the `/` menu (the commands surface is the sole `/` entry point) and remain available for model invocation. CodeBuddy hooks are written to `settings.json`. No `mcp.json` is written: GSD ships no MCP server.
 
 ---
 
@@ -316,6 +349,8 @@ npx @opengsd/gsd-core@latest --qwen --global
 ```
 
 Skills land in `~/.qwen/skills/gsd-*/SKILL.md`.
+
+GSD's main-loop skills are emitted with Qwen's optional numeric `priority` frontmatter field so the most-used workflows surface first in the `/skills` TUI list. Higher values sort earlier (per Qwen's skills spec), so core commands such as `/skills` for `new-project` (100), `plan-phase` (90), and `execute-phase` (85) appear above utility skills, which are left unset (default 0). This affects only the `/skills` list order — slash-command completion and `/help` remain alphabetical.
 
 **Override the install directory:**
 

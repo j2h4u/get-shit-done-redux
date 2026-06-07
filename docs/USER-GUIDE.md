@@ -688,6 +688,16 @@ To assign different models on a non-Claude runtime:
 }
 ```
 
+#### Codex skill picker and agent scheduling (#774)
+
+GSD enriches each Codex install with two additional artifacts:
+
+- **Skill TUI chip** — each installed `gsd-*` skill directory contains an `agents/openai.yaml` file that populates the Codex `/skills` picker with a human-readable display name and a short description, so you can browse and invoke GSD skills from the Codex TUI without typing the full skill name.
+
+- **Flex-tier scheduling** — light-tier agents (haiku-equivalent) emit `service_tier = "flex"` and `model_verbosity = "low"` in their agent TOML. The Codex scheduler routes these agents to the flex tier (lower cost, background processing) and suppresses verbose token output.
+
+Both enrichments are written automatically at install time and require no manual configuration. Requires Codex CLI ≥ 0.130.0.
+
 #### Switching from Claude to Codex with one config change (#2517)
 
 ```json
@@ -698,6 +708,15 @@ To assign different models on a non-Claude runtime:
 ```
 
 See [Runtime-Aware Profiles](CONFIGURATION.md#runtime-aware-profiles-2517).
+
+#### Per-runtime command enrichment
+
+When generating artifacts, the installer adapts GSD commands to each runtime's native command schema:
+
+- **Gemini CLI** — generated TOML commands use Gemini's `{{args}}` placeholder (translated from Claude's `$ARGUMENTS`) so typed arguments interpolate into the prompt, and `/gsd:progress` injects live project state via a fixed `!{cat .planning/STATE.md 2>/dev/null}` shell block (no interpolated input, so no injection risk; Gemini shows its standard confirmation dialog).
+- **Qwen Code** — main-loop skills carry Qwen's numeric `priority` field so the most-used workflows (e.g. `new-project`, `plan-phase`, `execute-phase`) sort first in the `/skills` list; utility skills are left unset. Higher values sort earlier; the field affects only the `/skills` list order.
+
+See [How to install GSD Core on your runtime](how-to/install-on-your-runtime.md) for the full per-runtime details.
 
 ### Manual install / no-Node.js setup
 
@@ -727,11 +746,50 @@ npx @opengsd/gsd-core --cline --local    # this project only
 npx @opengsd/gsd-core --codebuddy --global
 ```
 
+GSD installs four surfaces for CodeBuddy: `/gsd-*` slash commands in `~/.codebuddy/commands/`, subagents in `~/.codebuddy/agents/`, model-invocable skills in `~/.codebuddy/skills/`, and `settings.json` hooks. The skills are emitted with `user-invocable: false` so the slash commands are the single `/` menu surface (no duplicate entries).
+
 ### Installing for Qwen Code
 
 ```bash
 npx @opengsd/gsd-core --qwen --global
 ```
+
+### Installing as a Gemini CLI extension (#775)
+
+GSD ships a `gemini-extension.json` extension manifest at the repository root, so
+Gemini CLI users can install, update, and remove GSD through Gemini's own
+extension lifecycle — and have it show up in `gemini extensions list`:
+
+```bash
+# Install (Gemini clones the repo and copies the extension)
+gemini extensions install https://github.com/open-gsd/gsd-core
+
+# Update to the latest released manifest version
+gemini extensions update gsd-core
+
+# Remove
+gemini extensions uninstall gsd-core
+```
+
+For local development against a checkout, symlink it instead of copying:
+
+```bash
+gemini extensions link /path/to/gsd-core
+```
+
+**What the extension delivers today:** it loads GSD's operating context
+(`GEMINI.md`) into every Gemini session in the project, and gives you the
+discoverable install/update/remove lifecycle above. The `/gsd:*` slash commands,
+agents, and hooks are still installed via the dedicated installer:
+
+```bash
+npx @opengsd/gsd-core --gemini --global
+```
+
+The two paths are complementary and additive — installing the extension does not
+change or replace the `npx gsd-core --gemini` install, and either can be used on
+its own. (Slash-command/agent/hook projection into the extension package itself
+is a planned follow-up.)
 
 ### Installing for Prerelease Editions
 
@@ -779,6 +837,35 @@ See [docs/manual-update.md](manual-update.md) for a step-by-step manual update p
 ### Workflow Diagnostics (`/gsd-forensics`)
 
 When a workflow fails in a non-obvious way, run `/gsd-forensics` to generate a diagnostic report covering git history anomalies, artifact integrity, and state inconsistencies. Output goes to `.planning/forensics/`.
+
+### Pre-populated Permissions (Claude Code)
+
+Since v1.3.1, the installer pre-populates `~/.claude/settings.json` (or
+`settings.local.json` for local installs) with the core permissions GSD needs:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx gsd-core *)",
+      "Read(.planning/*)",
+      "Write(.planning/*)",
+      "Read(STATE.md)",
+      "Write(STATE.md)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(.secrets)"
+    ]
+  }
+}
+```
+
+These entries eliminate first-run approval prompts for GSD's own tool calls. The
+merge is non-destructive — your existing permissions are preserved and GSD entries
+are only appended. Uninstalling GSD removes exactly these entries and preserves
+any others.
 
 ### Executor Subagent Gets "Permission denied" on Bash Commands
 
