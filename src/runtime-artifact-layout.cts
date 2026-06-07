@@ -224,6 +224,7 @@ function kimiAgentsKind(destSubpath: string, prefix: string, configDir: string):
       const rootAgent = `---\nname: gsd\ndescription: Run GSD workflows in Kimi CLI.\ntools: Agent\n---\n\n# GSD for Kimi CLI\n\nCoordinate installed /skill:gsd-* workflows and route work to generated GSD subagents when a workflow requires an agent handoff.\n`;
       const artifacts = buildKimiAgentArtifacts({ rootAgent, subagents });
       const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-kimi-agents-'));
+      installProfiles.STAGED_DIRS.add(stageDir);
       fs.writeFileSync(path.join(stageDir, 'gsd.yaml'), artifacts.root.yaml);
       fs.writeFileSync(path.join(stageDir, 'gsd.md'), artifacts.root.prompt);
       const subagentsDir = path.join(stageDir, 'subagents');
@@ -232,7 +233,6 @@ function kimiAgentsKind(destSubpath: string, prefix: string, configDir: string):
         fs.writeFileSync(path.join(subagentsDir, `${artifact.name}.yaml`), artifact.yaml);
         fs.writeFileSync(path.join(subagentsDir, `${artifact.name}.md`), artifact.prompt);
       }
-      installProfiles.STAGED_DIRS.add(stageDir);
       return stageDir;
     },
   };
