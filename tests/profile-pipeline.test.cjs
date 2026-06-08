@@ -9,6 +9,7 @@ const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { runGsdTools, createTempDir, createTempProject, cleanup } = require('./helpers.cjs');
 
 // ─── scan-sessions ────────────────────────────────────────────────────────────
@@ -107,6 +108,11 @@ describe('extract-messages command', () => {
     assert.strictEqual(out.messages_extracted, 2, 'should extract 2 genuine user messages');
     assert.strictEqual(out.project, 'my-project');
     assert.ok(out.output_file, 'should have output file path');
+    assert.ok(
+      out.output_file.startsWith(path.join(os.tmpdir(), 'gsd') + path.sep),
+      `output file should be under the dedicated GSD temp dir: ${out.output_file}`,
+    );
+    cleanup(path.dirname(out.output_file));
   });
 
   test('filters out meta and internal messages', () => {
@@ -131,6 +137,46 @@ describe('extract-messages command', () => {
     assert.ok(result.success, `Failed: ${result.error}`);
     const out = JSON.parse(result.output);
     assert.strictEqual(out.messages_extracted, 2, 'should only extract 2 genuine external messages');
+    cleanup(path.dirname(out.output_file));
+  });
+});
+
+// ─── profile-sample ──────────────────────────────────────────────────────────
+
+describe('profile-sample command', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempDir('gsd-profile-test-');
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('writes sample output under dedicated GSD temp directory', () => {
+    const sessionsDir = path.join(tmpDir, 'projects');
+    const projectDir = path.join(sessionsDir, 'sample-project');
+    fs.mkdirSync(projectDir, { recursive: true });
+
+    const messages = [
+      { type: 'user', userType: 'external', message: { content: 'sample me' }, timestamp: new Date().toISOString() },
+    ];
+    fs.writeFileSync(
+      path.join(projectDir, 'session-001.jsonl'),
+      messages.map(m => JSON.stringify(m)).join('\n')
+    );
+
+    const result = runGsdTools(['profile-sample', '--path', sessionsDir, '--raw'], tmpDir);
+    assert.ok(result.success, `Failed: ${result.error}`);
+
+    const out = JSON.parse(result.output);
+    assert.strictEqual(out.messages_sampled, 1, 'should sample the synthetic message');
+    assert.ok(
+      out.output_file.startsWith(path.join(os.tmpdir(), 'gsd') + path.sep),
+      `output file should be under the dedicated GSD temp dir: ${out.output_file}`,
+    );
+    cleanup(path.dirname(out.output_file));
   });
 });
 

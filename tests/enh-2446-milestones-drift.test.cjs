@@ -8,7 +8,7 @@
  * Tests for gsd-health MILESTONES.md drift detection (#2446).
  */
 
-const { test } = require('node:test');
+const { test, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -16,8 +16,18 @@ const os = require('node:os');
 
 const { cmdValidateHealth } = require('../gsd-core/bin/lib/verify.cjs');
 
+const tempDirs = new Set();
+
+afterEach(() => {
+  for (const dir of tempDirs) {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  }
+  tempDirs.clear();
+});
+
 function makeTempProject(files = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-2446-'));
+  tempDirs.add(dir);
   fs.mkdirSync(path.join(dir, '.planning', 'milestones'), { recursive: true });
   for (const [rel, content] of Object.entries(files)) {
     const abs = path.join(dir, rel);

@@ -1,7 +1,7 @@
 'use strict';
 process.env.GSD_TEST_MODE = '1';
 
-const { test, describe } = require('node:test');
+const { test, describe, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -17,6 +17,15 @@ const {
   renderGithubReleaseNotes,
 } = require(path.join(ROOT, 'scripts', 'changeset', 'github-release-notes.cjs'));
 
+const tempRepos = new Set();
+
+afterEach(() => {
+  for (const repo of tempRepos) {
+    fs.rmSync(repo, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  }
+  tempRepos.clear();
+});
+
 function run(command, args, cwd, env) {
   const result = cp.spawnSync(command, args, { cwd, encoding: 'utf8', env: env || process.env });
   assert.equal(result.status, 0, `${command} ${args.join(' ')}\nstdout=${result.stdout}\nstderr=${result.stderr}`);
@@ -31,6 +40,7 @@ function writeFragment(repo, name, type, pr, body) {
 
 function createTaggedRepo() {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-release-notes-'));
+  tempRepos.add(repo);
   // Isolate from the developer's global/system git config (e.g. gpgSign settings)
   // by pointing GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM at an empty file inside
   // the temp dir. This prevents tag.gpgSign / commit.gpgSign / tag.forceSignAnnotated
