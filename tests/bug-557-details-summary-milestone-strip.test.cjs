@@ -105,6 +105,79 @@ status: in_progress
 Phase: 2 (New Feature)
 `;
 
+const ROADMAP_DETAILS_SUMMARY_WITH_FLAT_PHASE_DETAILS = `# Roadmap: mcp-server-health-connect
+
+## Milestones
+
+- [x] **v1.0 v1 Analytics** — Phases 1-7 shipped 2026-05-06.
+- [ ] **v1.1 Samsung Health 0-to-1** — Phases 8-11 planned 2026-06-05.
+
+<details>
+<summary>v1.0 v1 Analytics (Phases 1-7) — SHIPPED 2026-05-06</summary>
+
+- [x] **Phase 1: Storage Decision and Skeleton** — complete.
+- [x] **Phase 2: Source Inspection and Canonical Schema** — complete.
+
+</details>
+
+<details open>
+<summary>v1.1 Samsung Health 0-to-1 (Phases 8-11) — PLANNED</summary>
+
+- [x] **Phase 8: Lakehouse Direction and Samsung Source Metadata**
+- [ ] **Phase 9: Samsung Raw Import and Provenance**
+- [ ] **Phase 10: Strava-Informed Metric Registry and High-Value Read Models**
+- [ ] **Phase 11: Agent Data Access and End-to-End Validation**
+
+</details>
+
+## Phase Details
+
+### Phase 8: Lakehouse Direction and Samsung Source Metadata
+**Goal**: Reframe the project as a personal health lakehouse.
+**Requirements**: SAMSUNG-01
+
+### Phase 9: Samsung Raw Import and Provenance
+**Goal**: Import Samsung Health archive contents into DuckDB cumulatively and idempotently while preserving source provenance and avoiding per-archive snapshots.
+**Requirements**: SAMSUNG-02, SAMSUNG-03, SAMSUNG-04, SAMSUNG-05, LAKE-01, LAKE-02
+**Success Criteria** (what must be TRUE):
+  1. A Samsung Health archive import creates source-layer DuckDB tables.
+
+### Phase 10: Strava-Informed Metric Registry and High-Value Read Models
+**Goal**: Reuse proven DuckDB and metric-registry decisions.
+**Requirements**: METRIC-01
+
+### Phase 11: Agent Data Access and End-to-End Validation
+**Goal**: Expose a small ordered-data surface over the local lakehouse.
+**Requirements**: DATA-01
+
+## Backlog
+
+### Phase 999.1: Automatic strong correlation discovery (BACKLOG)
+**Goal**: Future backlog item.
+`;
+
+const STATE_V11 = `---
+gsd_state_version: 1.0
+milestone: v1.1
+milestone_name: Samsung Health 0-to-1
+status: planning
+progress:
+  total_phases: 4
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+  percent: 25
+---
+
+# Project State
+
+## Current Position
+
+Phase: 09 - Samsung Raw Import and Provenance
+Plan: Not started
+Status: Ready for planning
+`;
+
 // ─── Test suite ───────────────────────────────────────────────────────────────
 
 describe('bug #557 — <details>/<summary> active milestone strip', () => {
@@ -208,6 +281,47 @@ describe('bug #557 — <details>/<summary> active milestone strip', () => {
       output.phase_count >= 2,
       `Expected phase_count >= 2 for v2.1 with 🔄 heading; got ${output.phase_count}. ` +
       `activeMarkerPattern must include 🔄, not just 🚧.`
+    );
+  });
+
+  test('init plan-phase finds active details phases whose sections live in flat Phase Details', () => {
+    const planning = path.join(tmpDir, '.planning');
+    fs.writeFileSync(path.join(planning, 'ROADMAP.md'), ROADMAP_DETAILS_SUMMARY_WITH_FLAT_PHASE_DETAILS, 'utf-8');
+    fs.writeFileSync(path.join(planning, 'STATE.md'), STATE_V11, 'utf-8');
+    fs.writeFileSync(path.join(planning, 'config.json'), '{}', 'utf-8');
+
+    const result = runGsdTools(['init', 'plan-phase', '9'], tmpDir);
+    assert.ok(result.success, `init plan-phase failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.phase_found, true, 'Phase 9 must be found from flat Phase Details');
+    assert.strictEqual(output.phase_number, '9');
+    assert.strictEqual(output.phase_name, 'Samsung Raw Import and Provenance');
+    assert.strictEqual(output.phase_req_ids, 'SAMSUNG-02, SAMSUNG-03, SAMSUNG-04, SAMSUNG-05, LAKE-01, LAKE-02');
+  });
+
+  test('init progress scopes disk and roadmap phases to active details summary references', () => {
+    const planning = path.join(tmpDir, '.planning');
+    fs.writeFileSync(path.join(planning, 'ROADMAP.md'), ROADMAP_DETAILS_SUMMARY_WITH_FLAT_PHASE_DETAILS, 'utf-8');
+    fs.writeFileSync(path.join(planning, 'STATE.md'), STATE_V11, 'utf-8');
+    fs.writeFileSync(path.join(planning, 'config.json'), '{}', 'utf-8');
+
+    for (const dir of ['01-old', '02-old', '08-lakehouse-direction']) {
+      const phaseDir = path.join(planning, 'phases', dir);
+      fs.mkdirSync(phaseDir, { recursive: true });
+      fs.writeFileSync(path.join(phaseDir, `${dir.slice(0, 2)}-01-PLAN.md`), '# Plan\n', 'utf-8');
+      fs.writeFileSync(path.join(phaseDir, `${dir.slice(0, 2)}-01-SUMMARY.md`), '# Summary\n', 'utf-8');
+    }
+
+    const result = runGsdTools(['init', 'progress'], tmpDir);
+    assert.ok(result.success, `init progress failed: ${result.error}`);
+
+    const output = JSON.parse(result.output);
+    const phaseNums = (output.phases || []).map(p => String(p.number).replace(/^0+/, '') || '0');
+    assert.deepStrictEqual(
+      phaseNums,
+      ['8', '9', '10', '11'],
+      `active v1.1 scope must include only phases 8-11, got ${JSON.stringify(phaseNums)}`
     );
   });
 
