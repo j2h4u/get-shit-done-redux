@@ -17,6 +17,7 @@ process.env.GSD_TEST_MODE = '1';
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const { createTempDir, cleanup } = require('./helpers.cjs');
@@ -28,6 +29,13 @@ const { loadSkillsManifest, resolveProfile } = require('../gsd-core/bin/lib/inst
 const REAL_COMMANDS_DIR = path.join(__dirname, '..', 'commands', 'gsd');
 const MANIFEST = loadSkillsManifest(REAL_COMMANDS_DIR);
 const RESOLVED_CORE = resolveProfile({ modes: ['core'], manifest: MANIFEST });
+
+function listCommandRewriteTempDirs() {
+  return new Set(
+    fs.readdirSync(os.tmpdir())
+      .filter((name) => name.startsWith('gsd-cmd-rewrites-'))
+  );
+}
 
 // ─── Layout contract ─────────────────────────────────────────────────────────
 
@@ -132,6 +140,29 @@ describe('enh-790 — installRuntimeArtifacts augment emits both commands and sk
     assert.ok(fs.existsSync(installedHelp), 'installed gsd-help.md must exist');
     const installedContent = fs.readFileSync(installedHelp, 'utf8');
     assert.ok(!installedContent.includes('~/.claude/'), 'installed command must not have raw ~/.claude/ refs');
+  });
+
+  test('full profile install removes temporary command rewrite staging dir', (t) => {
+    const { resolveProfile } = require('../gsd-core/bin/lib/install-profiles.cjs');
+    const RESOLVED_FULL = resolveProfile({ modes: ['full'], manifest: MANIFEST });
+    assert.strictEqual(RESOLVED_FULL.skills, '*', 'full profile must have skills === "*"');
+
+    const before = listCommandRewriteTempDirs();
+    const leaked = [];
+    t.after(() => {
+      for (const name of leaked) {
+        fs.rmSync(path.join(os.tmpdir(), name), { recursive: true, force: true });
+      }
+    });
+
+    const configDir = createTempDir('gsd-enh790-temp-cleanup-');
+    t.after(() => cleanup(configDir));
+
+    installRuntimeArtifacts('augment', configDir, 'global', RESOLVED_FULL);
+
+    const after = listCommandRewriteTempDirs();
+    leaked.push(...[...after].filter((name) => !before.has(name)));
+    assert.deepStrictEqual(leaked, [], 'install must clean gsd-cmd-rewrites-* temp dirs');
   });
 });
 
