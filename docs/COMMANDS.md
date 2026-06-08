@@ -12,6 +12,14 @@
 
 The hyphen and colon forms are *runtime-specific spellings of the same command*. Whichever runtime you're on, the installer writes the correct form into your runtime's command directory.
 
+### Skill Runtime Behavior (Claude Code)
+
+Heavy workflow skills (`/gsd-plan-phase`, `/gsd-execute-phase`, `/gsd-autonomous`) carry `context: fork` in their frontmatter. On Claude Code, this runs each skill in an isolated subagent context window, protecting the main session's context budget. The skills also declare `effort: xhigh`, signalling maximum token budget to the runtime.
+
+Quick-status skills (`/gsd-progress`, `/gsd-stats`) declare `effort: low`, directing the runtime to use a minimal token budget for fast reads.
+
+These fields are Claude Code–specific frontmatter. On runtimes that do not recognise them (Gemini, Codex, Cursor, etc.) the fields are silently ignored — existing behaviour is unchanged.
+
 ---
 
 ## Namespace Meta-Skills
@@ -157,12 +165,13 @@ Research, plan, and verify a phase.
 | `--skip-bounce` | Skip plan bounce even if enabled in config |
 | `--mvp` | Vertical MVP mode — planner organizes tasks as feature slices (UI→API→DB) instead of horizontal layers. On Phase 1 of a new project with no prior phase summaries, also emits `SKELETON.md` (Walking Skeleton). Can be persisted on a phase via `**Mode:** mvp` in ROADMAP.md, which applies `--mvp` automatically without the flag. |
 | `--tdd` | TDD mode — planner applies `type: tdd` to eligible behavior-adding tasks so each begins with a failing test. Composable with `--mvp`: `--mvp --tdd` produces vertical slices where every behavior-adding task starts red-green. |
+| `--granularity <coarse\|standard\|fine>` | Override the planning granularity for this invocation, ignoring config. Valid values: `coarse`, `standard`, `fine`. Takes precedence over `granularities.planning`, top-level `granularity`, and `planning.granularity` config. |
 
 **Prerequisites:** `.planning/ROADMAP.md` exists
 **Produces:** `{phase}-RESEARCH.md`, `{phase}-{N}-PLAN.md`, `{phase}-VALIDATION.md`; `{phase}/SKELETON.md` when Walking Skeleton mode fires
 
 **Research-only mode (`--research-phase <N>`):**
-- No modifier: prompts `update / view / skip` if RESEARCH.md already exists.
+- No modifier: when RESEARCH.md already exists, auto-uses it — emits a one-line notice and exits, no prompt.
 - With `--research`: force-refresh — re-spawn researcher unconditionally, no prompt.
 - With `--view`: print existing RESEARCH.md to stdout, no spawn. Errors if RESEARCH.md missing.
 
@@ -185,7 +194,7 @@ See [Package Legitimacy Gate in the User Guide](USER-GUIDE.md#package-legitimacy
 /gsd-plan-phase 1 --bounce                     # Plan + external bounce validation
 /gsd-plan-phase 2 --ingest docs/adr/0010.md   # ADR express path for context synthesis
 /gsd-plan-phase 2 --ingest 'docs/adr/00*.md' --ingest-format auto
-/gsd-plan-phase --research-phase 4             # Research only on phase 4 (prompts if RESEARCH.md exists)
+/gsd-plan-phase --research-phase 4             # Research only on phase 4 (auto-uses existing RESEARCH.md, no prompt)
 /gsd-plan-phase --research-phase 4 --view      # Print existing RESEARCH.md, no spawn
 /gsd-plan-phase --research-phase 4 --research  # Force-refresh research, no prompt
 /gsd-plan-phase 1 --mvp                        # Vertical-slice plan for phase 1
@@ -713,13 +722,17 @@ Run all remaining phases autonomously.
 |------|-------------|
 | `--from N` | Start from a specific phase number |
 | `--to N` | Stop after completing a specific phase number |
+| `--only N` | Restrict execution to phase N; lifecycle step is skipped |
 | `--interactive` | Lean context with user input |
+| `--text` | Replace `AskUserQuestion` prompts with plain numbered lists |
 
 ```bash
 /gsd-autonomous                     # Run all remaining phases
 /gsd-autonomous --from 3            # Start from phase 3
 /gsd-autonomous --to 5              # Run up to and including phase 5
 /gsd-autonomous --from 3 --to 5     # Run phases 3 through 5
+/gsd-autonomous --only 4            # Run only phase 4
+/gsd-autonomous --text              # Run with text-mode prompts
 ```
 
 ### `/gsd-debug`
@@ -1135,11 +1148,13 @@ Update GSD with changelog preview, and optionally sync skills or reapply local p
 |------|-------------|
 | `--sync` | Sync skills from the GSD registry after updating |
 | `--reapply` | Restore local modifications (patches) after updating |
+| `--next` / `--rc` | Target the `@next` RC dist-tag instead of `@latest` (installs or refreshes a release candidate, e.g. `1.4.0-rc.1`; see ADR #660) |
 
 ```bash
 /gsd-update                         # Check for updates and install
 /gsd-update --sync                  # Update and sync skills
 /gsd-update --reapply               # Update and reapply local patches
+/gsd-update --next                  # Install from the @next RC dist-tag
 ```
 
 ---

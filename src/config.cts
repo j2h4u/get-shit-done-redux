@@ -176,6 +176,14 @@ function buildNewProjectConfig(userChoices: Record<string, unknown>): Record<str
   const hasFirecrawl = !!(process.env['FIRECRAWL_API_KEY'] || fs.existsSync(firecrawlKeyFile));
   const exaKeyFile = path.join(homedir, '.gsd', 'exa_api_key');
   const hasExaSearch = !!(process.env['EXA_API_KEY'] || fs.existsSync(exaKeyFile));
+  const tavilyKeyFile = path.join(homedir, '.gsd', 'tavily_api_key');
+  const hasTavilySearch = !!(process.env['TAVILY_API_KEY'] || fs.existsSync(tavilyKeyFile));
+  const refKeyFile = path.join(homedir, '.gsd', 'ref_api_key');
+  const hasRefSearch = !!(process.env['REF_API_KEY'] || fs.existsSync(refKeyFile));
+  const perplexityKeyFile = path.join(homedir, '.gsd', 'perplexity_api_key');
+  const hasPerplexity = !!(process.env['PERPLEXITY_API_KEY'] || fs.existsSync(perplexityKeyFile));
+  const jinaKeyFile = path.join(homedir, '.gsd', 'jina_api_key');
+  const hasJina = !!(process.env['JINA_API_KEY'] || fs.existsSync(jinaKeyFile));
 
   // Load user-level defaults from ~/.gsd/defaults.json if available
   const globalDefaultsPath = path.join(homedir, '.gsd', 'defaults.json');
@@ -205,6 +213,10 @@ function buildNewProjectConfig(userChoices: Record<string, unknown>): Record<str
     brave_search: hasBraveSearch,
     firecrawl: hasFirecrawl,
     exa_search: hasExaSearch,
+    tavily_search: hasTavilySearch,
+    ref_search: hasRefSearch,
+    perplexity: hasPerplexity,
+    jina: hasJina,
     git: {
       branching_strategy: CONFIG_DEFAULTS.branching_strategy,
       create_tag: true,
@@ -417,18 +429,31 @@ function setConfigValue(cwd: string, keyPath: string, parsedValue: unknown): Set
       error('Failed to read config.json: ' + (err as Error).message, ERROR_REASON.CONFIG_PARSE_FAILED);
     }
 
-    // Set nested value using dot notation (e.g., "workflow.research")
+    // Set nested value using dot notation (e.g., "workflow.research").
+    // Prototype-pollution guard: reject dangerous segments via inline literal
+    // comparisons on the exact key used to index `current`, immediately before
+    // each write. The inline comparison is the barrier CodeQL's
+    // js/prototype-pollution-utility query recognises — the previous Set-based
+    // pre-loop check was functionally correct but not traced through, so
+    // code-scanning alert #26 kept firing. Behaviour is unchanged from #663.
     const keys = keyPath.split('.');
     let current: Record<string, unknown> = config;
     for (let i = 0; i < keys.length - 1; i++) {
       const key = keys[i];
+      if (key === '__proto__' || key === 'prototype' || key === 'constructor') {
+        error('Invalid config key (prototype pollution guard): ' + keyPath, ERROR_REASON.CONFIG_PARSE_FAILED);
+      }
       if (current[key] === undefined || typeof current[key] !== 'object') {
         current[key] = {};
       }
       current = current[key] as Record<string, unknown>;
     }
-    const previousValue = current[keys[keys.length - 1]]; // Capture previous value before overwriting
-    current[keys[keys.length - 1]] = parsedValue;
+    const lastKey = keys[keys.length - 1];
+    if (lastKey === '__proto__' || lastKey === 'prototype' || lastKey === 'constructor') {
+      error('Invalid config key (prototype pollution guard): ' + keyPath, ERROR_REASON.CONFIG_PARSE_FAILED);
+    }
+    const previousValue = current[lastKey]; // Capture previous value before overwriting
+    current[lastKey] = parsedValue;
 
     // Write back
     try {
@@ -663,7 +688,6 @@ function cmdConfigSetModelProfile(cwd: string, profile: string | undefined, raw:
     error(`Usage: config-set-model-profile <${VALID_PROFILES.join('|')}>`);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
   const normalizedProfile = profile!.toLowerCase().trim();
   if (!VALID_PROFILES.includes(normalizedProfile)) {
     error(`Invalid profile '${String(profile)}'. Valid profiles: ${VALID_PROFILES.join(', ')}`);

@@ -12,7 +12,7 @@ Read all files referenced by the invoking prompt's execution_context before star
 Parse arguments and load project state:
 
 ```bash
-_GSD_SHIM_NAME="gsd-tools.cjs"; _GSD_RUNTIME_ROOT="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"; GSD_TOOLS="${_GSD_RUNTIME_ROOT}/gsd-core/bin/${_GSD_SHIM_NAME}"; if [ -f "$GSD_TOOLS" ]; then gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif command -v gsd-tools >/dev/null 2>&1; then GSD_TOOLS="$(command -v gsd-tools)"; gsd_run() { "$GSD_TOOLS" "$@"; }; elif [ -f "$HOME/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="$HOME/.claude/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "$HOME/.codex/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="$HOME/.codex/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; else echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS, local .claude/.codex runtime roots, or gsd-tools on PATH. Run the GSD installer for your runtime." >&2; exit 1; fi
+_GSD_SHIM_NAME="gsd-tools.cjs"; _GSD_RUNTIME_ROOT="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"; GSD_TOOLS="${_GSD_RUNTIME_ROOT}/gsd-core/bin/${_GSD_SHIM_NAME}"; if [ -f "$GSD_TOOLS" ]; then gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif command -v gsd-tools >/dev/null 2>&1; then GSD_TOOLS="$(command -v gsd-tools)"; gsd_run() { "$GSD_TOOLS" "$@"; }; elif [ -f "$HOME/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="$HOME/.claude/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "$HOME/.codex/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="$HOME/.codex/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; else echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS, local .claude/.codex runtime roots, or gsd-tools on PATH. Run: npx -y @opengsd/gsd-core@latest --claude --local" >&2; exit 1; fi
 INIT=$(gsd_run query init.phase-op "${PHASE_ARG}")
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 ```
@@ -41,15 +41,12 @@ Verify the work is ready to ship:
 
 1. **Verification passed?**
    ```bash
-   VERIFICATION_FILE=$(ls ${PHASE_DIR}/*-VERIFICATION.md 2>/dev/null | head -1)
-   STATUS=$(sed -n '/^---$/,/^---$/p' "${VERIFICATION_FILE}" 2>/dev/null | grep -m1 "^status:" | cut -d: -f2 | tr -d ' ')
+   VERIFICATION=$(gsd_run query verification.status "${PHASE_DIR}" 2>/dev/null)
+   STATUS=$(printf '%s' "$VERIFICATION" | jq -r '.status' 2>/dev/null || echo "")
+   NEXT_ACTION=$(printf '%s' "$VERIFICATION" | jq -r '.next_action' 2>/dev/null || echo "")
+   NEXT_COMMAND=$(printf '%s' "$VERIFICATION" | jq -r '.next_command' 2>/dev/null || echo "")
    ```
-   The verifier emits exactly `passed`, `gaps_found`, or `human_needed` (see the status table in `execute-phase.md`); only `passed` may ship. Route on `${STATUS}` — on any non-`passed` value, block with `PHASE_VERIFICATION_INCOMPLETE` and state the matching next action:
-   - `passed` → verification complete; continue to the next preflight check.
-   - `gaps_found` → run `/gsd:plan-phase ${PHASE_NUMBER} --gaps` to plan the fixes, then re-run `/gsd:execute-phase` before shipping.
-   - `human_needed` → complete the manual tests in `${PHASE_DIR}/*-UAT.md`, then re-run the verify step until status is `passed`.
-   - empty (no `*-VERIFICATION.md`) → the verify step never completed; re-run `/gsd:execute-phase`.
-   - any other value → unexpected status `${STATUS}`; re-run `/gsd:execute-phase` verification.
+   Only `passed` may ship. If `$STATUS` is `passed`, verification is complete — continue to the next preflight check. Any other value (including `gaps_found`, `human_needed`, `missing`, and `unknown`) blocks with `PHASE_VERIFICATION_INCOMPLETE`: present `$NEXT_ACTION` to the user and, when `$NEXT_COMMAND` is non-empty, show it as the command to run next. The query already handles missing files and unexpected values, so no per-status arm is needed.
 
 2. **Clean working tree?**
    ```bash

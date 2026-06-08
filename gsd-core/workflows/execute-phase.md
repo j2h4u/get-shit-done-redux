@@ -66,7 +66,7 @@ If `--wave` is absent, preserve the current behavior of executing all incomplete
 Load all context in one call:
 
 ```bash
-_GSD_SHIM_NAME="gsd-tools.cjs"; _GSD_RUNTIME_ROOT="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"; GSD_TOOLS="${_GSD_RUNTIME_ROOT}/gsd-core/bin/${_GSD_SHIM_NAME}"; if [ -f "$GSD_TOOLS" ]; then gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif command -v gsd-tools >/dev/null 2>&1; then GSD_TOOLS="$(command -v gsd-tools)"; gsd_run() { "$GSD_TOOLS" "$@"; }; elif [ -f "$HOME/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="$HOME/.claude/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "$HOME/.codex/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="$HOME/.codex/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; else echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS, local .claude/.codex runtime roots, or gsd-tools on PATH. Run the GSD installer for your runtime." >&2; exit 1; fi
+_GSD_SHIM_NAME="gsd-tools.cjs"; _GSD_RUNTIME_ROOT="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"; GSD_TOOLS="${_GSD_RUNTIME_ROOT}/gsd-core/bin/${_GSD_SHIM_NAME}"; if [ -f "$GSD_TOOLS" ]; then gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif command -v gsd-tools >/dev/null 2>&1; then GSD_TOOLS="$(command -v gsd-tools)"; gsd_run() { "$GSD_TOOLS" "$@"; }; elif [ -f "$HOME/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="$HOME/.claude/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "$HOME/.codex/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="$HOME/.codex/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; else echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS, local .claude/.codex runtime roots, or gsd-tools on PATH. Run: npx -y @opengsd/gsd-core@latest --claude --local" >&2; exit 1; fi
 INIT=$(gsd_run query init.execute-phase "${PHASE_ARG}")
 if [[ "$INIT" == @file:* ]]; then INIT=$(cat "${INIT#@file:}"); fi
 AGENT_SKILLS=$(gsd_run query agent-skills gsd-executor)
@@ -92,6 +92,16 @@ if [ "$RUNTIME" = "codex" ] && [ "$USE_WORKTREES" != "false" ]; then
 fi
 # Sweep orphaned locked worktrees from prior crashed sessions before spawning executors (#3707).
 [ "$USE_WORKTREES" != "false" ] && gsd_run query worktree.reap-orphans 2>/dev/null || true
+# Auto-degrade to sequential if HEAD has diverged from the worktree fork base (#683).
+# Only applies to Claude Code (isolation="worktree" is Claude-Code-specific).
+if [ "$RUNTIME" = "claude" ] && [ "$USE_WORKTREES" != "false" ]; then
+  _SHOULD_DEGRADE=$(gsd_run query worktree.base-check --pick shouldDegrade 2>/dev/null || true)
+  if [ "$_SHOULD_DEGRADE" = "true" ]; then
+    _DEGRADE_MSG=$(gsd_run query worktree.base-check --pick message 2>/dev/null || true)
+    [ -n "$_DEGRADE_MSG" ] && printf '%s\n' "$_DEGRADE_MSG" >&2
+    USE_WORKTREES=false
+  fi
+fi
 ```
 Codex maps subagents to `spawn_agent`, which has no direct Codex mapping for Claude Code's `isolation="worktree"` parameter. Failing closed prevents main-checkout edits while the workflow believes agents are isolated.
 
@@ -110,6 +120,8 @@ fi
 `SUBMODULE_PATHS` is exported to the `execute_waves` step, where the per-plan decision actually happens (see "Per-plan worktree decision" sub-step inside `execute_waves`). The decision is per-plan because different plans in the same wave can touch different files — only plans whose paths intersect a submodule must drop worktree isolation; plans nowhere near a submodule keep parallel isolation.
 
 When `USE_WORKTREES` (project-level) is `false`, all executor agents run without `isolation="worktree"` — they execute sequentially on the main working tree instead of in parallel worktrees. The per-plan decision below has no effect when worktrees are project-disabled.
+
+`USE_WORKTREES` is also automatically set to `false` for the duration of a run when `worktree base-check` detects that the orchestrator HEAD has diverged from the worktree fork base (the #683 condition — e.g. an unmerged milestone or feature branch). This check runs only when `RUNTIME=claude` because `isolation="worktree"` is a Claude Code-specific feature; other runtimes do not use it. The auto-degrade prints a one-line warning to stderr and falls through to the sequential path so executors do not hit the exit-42 worktree-branch-check halt. To restore parallel worktree execution, set `worktree.baseRef:"head"` in `.claude/settings.local.json` (or run `gsd-tools worktree set-baseref`) — this makes the fork base track the live HEAD instead of a fixed remote ref. The `worktree-branch-check` exit-42 guard inside each executor remains in place as a backstop.
 
 Read context window size for adaptive prompt enrichment:
 
@@ -188,7 +200,7 @@ if [ "$MVP_MODE" = "true" ] && [ "$TDD_MODE" = "true" ]; then
   fi
 fi
 ```
-Pure doc-only / config-only / test-only tasks return `is_behavior_adding=false` and are exempt. See `execute-mvp-tdd.md` for the halt report format.
+Pure doc-only / config-only / test-only tasks return `is_behavior_adding=false` and are exempt. When the gate trips, Read `~/.claude/gsd-core/references/execute-mvp-tdd.md` for the exact halt report format.
 </step>
 
 <step name="check_blocking_antipatterns" priority="first">
@@ -1413,16 +1425,15 @@ ${VERIFIER_SKILLS}",
 
 > **ORCHESTRATOR RULE — CODEX RUNTIME**: After calling Agent() above, stop working on this task immediately. Do not read more files, edit code, or run tests related to this task while the subagent is active. Wait for the subagent to return its result. This prevents duplicate work, conflicting edits, and wasted context. Only resume when the subagent result is available.
 
-Read status:
+Read status via the canonical query (scoped to frontmatter, covers missing/unknown cases):
 ```bash
-grep "^status:" "$PHASE_DIR"/*-VERIFICATION.md | cut -d: -f2 | tr -d ' '
+VERIFICATION=$(gsd_run query verification.status "$PHASE_DIR" 2>/dev/null)
+STATUS=$(printf '%s' "$VERIFICATION" | jq -r '.status' 2>/dev/null || echo "")
+NEXT_ACTION=$(printf '%s' "$VERIFICATION" | jq -r '.next_action' 2>/dev/null || echo "")
+NEXT_COMMAND=$(printf '%s' "$VERIFICATION" | jq -r '.next_command' 2>/dev/null || echo "")
 ```
 
-| Status | Action |
-|--------|--------|
-| `passed` | → update_roadmap |
-| `human_needed` | Persist and present human testing items; keep phase pending until verification reruns as `passed` |
-| `gaps_found` | Present gap summary, offer `/gsd:plan-phase {phase} --gaps ${GSD_WS}` |
+Route on `$STATUS`: if `passed`, proceed to update_roadmap. Otherwise keep the phase pending — present `$NEXT_ACTION` to the user and, when `$NEXT_COMMAND` is non-empty, show it as the next command to run. The query covers all cases including missing files (`missing`) and unexpected values (`unknown`), so no per-status arm needs to be listed here.
 
 **If human_needed:**
 

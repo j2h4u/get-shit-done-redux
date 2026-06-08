@@ -264,7 +264,7 @@ Full roster at `gsd-core/workflows/*.md`. Workflows are thin orchestrators that 
 
 ---
 
-## References (63 shipped)
+## References (67 shipped)
 
 Full roster at `gsd-core/references/*.md`. References are shared knowledge documents that workflows and agents `@-reference`. The groupings below match [`docs/ARCHITECTURE.md`](ARCHITECTURE.md#references-gsd-corereferencesmd) — core, workflow, thinking-model clusters, and the modular planner decomposition.
 
@@ -288,6 +288,9 @@ Full roster at `gsd-core/references/*.md`. References are shared knowledge docum
 | `debugger-philosophy.md` | Evergreen debugging disciplines loaded by `gsd-debugger`. |
 | `mandatory-initial-read.md` | Shared required-reading boilerplate injected into agent prompts. |
 | `project-skills-discovery.md` | Shared project-skills-discovery boilerplate injected into agent prompts. |
+| `research-documentation-lookup.md` | Shared documentation-lookup protocol (Context7 MCP + guarded CLI fallback) injected into all researcher agents. |
+| `research-philosophy.md` | Shared research philosophy (training-as-hypothesis, honest reporting, investigation-not-confirmation) injected into researcher agents. |
+| `research-verification-protocol.md` | Shared research verification protocol (4 pitfalls + pre-submission checklist) injected into researcher agents. |
 
 ### Workflow References
 
@@ -358,15 +361,16 @@ The `gsd-planner` agent is decomposed into a core agent plus reference modules t
 | `planner-human-verify-mode.md` | Rules for `workflow.human_verify_mode = end-of-phase`: suppress `checkpoint:human-verify` task emission and route deferred items via `<verify><human-check>`. |
 | `planner-graphify-auto-update.md` | How `load_graph_context` surfaces `.last-build-status.json` auto-update state (running / failed / stale head) alongside the existing staleness annotation. Opt-in via `graphify.auto_update` (#3347). |
 | `planner-interface-context.md` | Interface context rules for executors — how to extract key interfaces/types/exports from existing code and document new interfaces that downstream plans will consume. |
+| `planner-load-graph-context.md` | Planner's load_graph_context step: knowledge-graph freshness + dependency-context query via the gsd_run launcher (extracted from gsd-planner.md). |
 | `skeleton-template.md` | SKELETON.md template emitted for new-project Walking Skeleton (Phase 1 + `--mvp`). |
 | `user-story-template.md` | User story format for MVP planning — "As a / I want to / So that" structured fields. |
 | `spidr-splitting.md` | SPIDR splitting decomposition rules for handling large user stories in MVP mode. |
 
-> **Subdirectory:** `gsd-core/references/few-shot-examples/` contains additional few-shot examples (`plan-checker.md`, `verifier.md`) that are referenced from specific agents. These are not counted in the 63 top-level references.
+> **Subdirectory:** `gsd-core/references/few-shot-examples/` contains additional few-shot examples (`plan-checker.md`, `verifier.md`) that are referenced from specific agents. These are not counted in the 64 top-level references.
 
 ---
 
-## CLI Modules (82 shipped)
+## CLI Modules (90 shipped)
 
 Full listing: `gsd-core/bin/lib/*.cjs`.
 
@@ -378,6 +382,7 @@ Full listing: `gsd-core/bin/lib/*.cjs`.
 | `artifacts.cjs` | Canonical artifact registry — known `.planning/` root file names; used by `gsd-health` W019 lint |
 | `audit.cjs` | Audit dispatch, audit open sessions, audit storage helpers |
 | `check-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools check` |
+| `cli-exit.cjs` | `ExitError` class and `runMain()` helper — CLI entrypoints throw `ExitError` instead of calling `process.exit()`; `runMain()` translates the outcome into `process.exitCode` so output flushes cleanly |
 | `cjs-command-router-adapter.cjs` | Shared compatibility adapter for manifest-backed CJS command-family routers |
 | `clock.cjs` | Injectable clock seam (now/sleep) for deterministic lock testing |
 | `clusters.cjs` | Skill cluster definitions for the runtime surface module (ADR-0011 Phase 2) |
@@ -413,6 +418,7 @@ Full listing: `gsd-core/bin/lib/*.cjs`.
 | `model-catalog.cjs` | CJS adapter over the shared model catalog JSON; exports canonical runtime tier defaults, agent profile maps, alias maps, and routing metadata for all CLI consumers |
 | `model-profiles.cjs` | Backward-compatible profile helpers derived from `model-catalog.cjs`; no longer owns its own model table |
 | `package-identity.cjs` | Generated single source for GSD's published-package coordinates (npm name, bin name, repo slug, changelog URL, manual-install command), derived from package.json; read by the update worker, `check-latest-version`, and installer (#498) |
+| `package-legitimacy.cjs` | Registry-API package legitimacy verdicts (OK/SUS/SLOP) from npm/PyPI/crates, slopcheck optional |
 | `phase-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools phase` |
 | `phase-lifecycle.cjs` | Pure-computation phase lifecycle helpers extracted from the phase-lifecycle SDK handler |
 | `phase.cjs` | Phase directory operations, decimal numbering, plan indexing |
@@ -423,11 +429,14 @@ Full listing: `gsd-core/bin/lib/*.cjs`.
 | `profile-output.cjs` | Profile rendering, USER-PROFILE.md and dev-preferences.md generation |
 | `profile-pipeline.cjs` | User behavioral profiling data pipeline, session file scanning |
 | `prompt-budget.cjs` | Pure token-budget accounting for review prompts — estimates tokens, applies deterministic trim priority (head-shrink PROJECT.md, proportional plan truncation, drop context/research/requirements, hard-fail guard), returns structured metadata for `review.max_prompt_tokens` (#3081) |
+| `research-provider.cjs` | Research provider waterfall, confidence tiers, and planResearch (cache-hits + fetch plan) |
+| `research-store.cjs` | Content-addressed research cache: sha256 keys, per-source TTL staleness, two-tier (user ~/.gsd / project .planning) store |
 | `review-reviewer-selection.cjs` | Reviewer selection/normalization helpers for `/gsd-review` default reviewer policy and precedence |
 | `roadmap-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools roadmap` |
 | `roadmap-upgrade.cjs` | Migration tool for converting legacy `Phase N` entries to milestone-prefixed `Phase M-NN` convention; `computeMigrationPlan` + `applyMigration` with dry-run default and atomic rollback |
 | `roadmap.cjs` | ROADMAP.md parsing, phase extraction, plan progress |
 | `runtime-artifact-layout.cjs` | Runtime artifact layout module — resolves the artifact directory shapes (commands, agents, skills) for each supported runtime; single source of truth for per-runtime artifact placement (#3663) |
+| `runtime-config-adapter-registry.cjs` | Explicit runtime config adapter registry — resolves per-runtime config-mutation install intent (install surface, shared-settings gate, finish-phase permission writer); see ADR-58. |
 | `runtime-name-policy.cjs` | Runtime name normalization policy — canonical token sanitization for runtime identifiers used in path construction and display |
 | `runtime-homes.cjs` | Canonical runtime → global config/skills directory mapping; first-class support for all 15 runtimes including Hermes nested layout and Cline rules-based exclusion (#3126) |
 | `runtime-slash.cjs` | Runtime-aware slash-command formatter — single source of truth for emitting `/gsd-<cmd>` (skills-based runtimes) and `$gsd-<cmd>` (codex) in user-facing output and persisted artifacts (#3584) |
@@ -447,19 +456,22 @@ Full listing: `gsd-core/bin/lib/*.cjs`.
 | `update-context.cjs` | Pure install-context resolver for `/gsd:update` — runtime/scope/config-dir/version detection (LOCAL/GLOBAL/UNKNOWN) ported from update.md bash; backs `gsd-tools update-context` (#498) |
 | `validate-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools validate` |
 | `validate.cjs` | Pure phase variant normalization helpers (`phaseVariants`, `buildRoadmapPhaseVariants`, `buildNotStartedPhaseVariants`) used by `verify.cjs` for W006/W007 checks; no I/O, no async |
+| `verification-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools verification` |
+| `verification.cjs` | Verification-status routing — consolidates pass/gaps_found/human_needed status from phase verifier-emitted VERIFICATION.md frontmatter (#651) |
 | `verify-command-router.cjs` | Thin CJS subcommand router adapter for `gsd-tools verify` |
 | `verify.cjs` | Plan structure, phase completeness, reference, commit validation |
 | `workstream-inventory-builder.cjs` | Pure workstream inventory projection builder |
 | `workstream-inventory.cjs` | Shared workstream inventory projection: state fields, phase/plan/summary counts, roadmap phase count, and active marker — thin orchestrator that delegates pure projection to `workstream-inventory-builder.cjs` |
 | `workstream-name-policy.cjs` | Canonical workstream name validation (`isValidActiveWorkstreamName`, `hasInvalidPathSegment`, `validateWorkstreamName`) and slug normalization (`toWorkstreamSlug`) |
 | `workstream.cjs` | Workstream CRUD, migration, session-scoped active pointer |
+| `worktree-base-ref.cjs` | Worktree base-ref drift detection and degrade decision (`evaluateWorktreeBaseDegrade`) plus no-clobber `worktree.baseRef` settings management for the `base-check`/`set-baseref` subcommands (#683) |
 | `worktree-safety.cjs` | Worktree-root resolution and non-destructive prune policy decisions; owns W017 health-check logic |
 
 [`docs/CLI-TOOLS.md`](CLI-TOOLS.md) may describe a subset of these modules; when it disagrees with the filesystem, this table and the directory listing are authoritative.
 
 ---
 
-## Hooks (14 shipped)
+## Hooks (17 shipped)
 
 Full listing: `hooks/`.
 
@@ -470,11 +482,14 @@ Full listing: `hooks/`.
 | `gsd-check-update.js` | `SessionStart` | Background check for new GSD versions |
 | `gsd-check-update-worker.js` | (worker) | Background worker helper for check-update |
 | `gsd-update-banner.js` | `SessionStart` | Opt-in banner surfacing update availability when GSD statusline isn't used (PR #2795) |
+| `gsd-cursor-session-start.js` | Cursor `sessionStart` | Cursor-native context injection at session start (issue #777) |
+| `gsd-cursor-post-tool.js` | Cursor `postToolUse` | Cursor-native STATE.md update monitor after tool calls (issue #777) |
 | `gsd-prompt-guard.js` | `PreToolUse` | Scans `.planning/` writes for prompt-injection patterns (advisory) |
 | `gsd-workflow-guard.js` | `PreToolUse` | Detects file edits outside GSD workflow context (advisory, opt-in) |
 | `gsd-read-guard.js` | `PreToolUse` | Advisory guard preventing Edit/Write on unread files |
 | `gsd-read-injection-scanner.js` | `PostToolUse` | Scans tool Read results for prompt-injection patterns (v1.36+, PR #2201) |
 | `gsd-worktree-path-guard.js` | `PreToolUse` | Hard-blocks Edit/Write/MultiEdit with absolute paths outside the worktree root (PR #579, #260) |
+| `gsd-config-reload.js` | `FileChanged` | Hot-reloads GSD config context when `.planning/config.json` changes mid-session (#770) |
 | `gsd-session-state.sh` | `PostToolUse` | Session-state tracking for shell-based runtimes |
 | `gsd-validate-commit.sh` | `PostToolUse` | Commit validation for conventional-commit enforcement |
 | `gsd-phase-boundary.sh` | `PostToolUse` | Phase-boundary detection for workflow transitions |

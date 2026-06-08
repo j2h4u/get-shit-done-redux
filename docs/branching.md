@@ -74,7 +74,7 @@ These are work branches. Open one, push commits, PR it, merge it, let it auto-de
 | `perf/` | Performance work, no behavior change | `next` | `perf/3300-skill-index` |
 | `ci/` | CI/workflow changes only | `next` | `ci/3801-add-node-26-matrix` |
 | `revert/` | Reverting a previously-merged change | `next` (or `main` if urgent) | `revert/3919-bad-merge` |
-| `hotfix/X.Y.Z` | Patch release branch (created by `hotfix.yml`) | `main` | `hotfix/1.27.1` |
+| `hotfix/X.Y.Z` | Patch release branch (created by `release.yml` with a patch version X.Y.Z) | `main` | `hotfix/1.27.1` |
 | `release/X.Y.0` | Minor/major release branch (created by `release.yml`) | `main` | `release/1.28.0` |
 
 > **The branch name rule is enforced** by `.github/workflows/branch-naming.yml`.
@@ -130,10 +130,10 @@ git pull --ff-only
 git checkout -b fix/3919-critical-crash
 # ... commit, push, PR to next, merge.
 
-# 2. Trigger the hotfix workflow from the Actions tab:
-#    workflow:  Hotfix Release
+# 2. Trigger the Release workflow (release.yml) from the Actions tab:
+#    workflow:  Release
 #    action:    create
-#    version:   1.27.1   (next patch number)
+#    version:   1.27.1   (next patch number, X.Y.Z)
 #    auto_cherry_pick: true (default)
 ```
 
@@ -148,7 +148,7 @@ The workflow:
 6. `finalize` publishes to npm `@latest`, tags `v1.27.1`, opens
    merge-back PRs to **both** `main` and `next`.
 
-> See `.github/workflows/hotfix.yml` and `VERSIONING.md` for the deep dive.
+> See `.github/workflows/release.yml` and `VERSIONING.md` for the deep dive.
 
 ### Flow 3 — Minor or major release
 
@@ -167,6 +167,7 @@ When `next` has accumulated enough work to ship a new minor/major.
    - Each fix should also be PR'd to `next` so the next release has it too
      (or wait for the auto-back-merge after finalize)
    - Trigger `rc` action to publish RC builds: 1.28.0-rc.1, rc.2, ...
+   - Each `rc` run also prints a non-destructive preview of the curated `## [X.Y.0]` CHANGELOG section in the Actions job summary — rendered from the `.changeset/` fragments without consuming them — so you can review the upcoming release notes during RC testing.
 
 4. When stable: trigger `finalize`.
    - Publishes to npm @latest
@@ -212,7 +213,7 @@ resolve anyway. The treadmill is gone.
 ## Cheat sheet: "where does my PR go?"
 
 ```
-Is it a hotfix release branch?       → main      (cut by hotfix.yml)
+Is it a hotfix release branch?       → main      (cut by release.yml with a patch version X.Y.Z)
 Is it a stable release branch?       → main      (cut by release.yml)
 Is it an RC-blocker fix?             → release/X.Y.0  (and also next, or rely on back-merge)
 Is it everything else?               → next
@@ -248,10 +249,10 @@ the base branch — no need to recreate the PR.
   ```
 - **Phasing in:** see the migration notes in
   `docs/adr/230-introduce-next-integration-branch.md`.
-- **Updating release.yml / hotfix.yml:** these workflows currently branch
-  from `main` and cherry-pick from `main`. After phase-2 of the migration
-  they should branch from `next` (release) and cherry-pick from `next`
-  (hotfix). The patches are inlined in the ADR.
+- **Updating release.yml:** this workflow currently branches from `main` and
+  cherry-picks from `main`. After phase-2 of the migration it should branch
+  from `next` (release) and cherry-pick from `next` (hotfix). The patches
+  are inlined in the ADR.
 
 ---
 
@@ -262,7 +263,7 @@ A few exceptions where the rules above bend:
 - **True production-down emergency.** Push directly to a `fix/critical-*`
   branch, PR to `main`. The auto-back-merge workflow will replay it onto
   `next` within minutes. Use sparingly — most "urgent" things are fine to go
-  through `next` and ship same day via the hotfix workflow.
+  through `next` and ship same day via the Release workflow (patch version).
 - **Documentation-only typo on a published page.** If the only change is a
   doc fix that's visible right now and shouldn't wait for the next release,
   PR it to `main`. The auto-back-merge will sync `next`. Most doc changes

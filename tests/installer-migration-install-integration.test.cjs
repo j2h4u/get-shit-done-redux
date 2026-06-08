@@ -133,6 +133,7 @@ function withSdkDistPresent(fn) {
 }
 
 function stripAnsi(value) {
+  // eslint-disable-next-line no-control-regex -- \x1b (ESC) is the required leading byte of ANSI SGR color sequences; matching it is the purpose of stripping ANSI codes from captured CLI/console output
   return value.replace(/\x1b\[[0-9;]*m/g, '');
 }
 
@@ -171,14 +172,6 @@ function assertHasGsdDirectory(root, relPath) {
   assert.ok(
     listDirNames(root, relPath).some((name) => name.startsWith('gsd-')),
     `${relPath} should contain generated GSD entries`
-  );
-}
-
-function assertNoGsdDirectoryEntries(root, relPath) {
-  assert.equal(
-    listDirNames(root, relPath).some((name) => name.startsWith('gsd-')),
-    false,
-    `${relPath} should not contain generated GSD entries`
   );
 }
 
@@ -239,10 +232,11 @@ function assertFreshInstallContract(runtime, targetDir) {
       `${runtime} should install commands/gsd entries`
     );
   } else if (contract.surface === 'clinerules') {
+    // #787: Cline now uses the .clinerules/ directory form (rules at gsd.md).
     assert.match(
-      fs.readFileSync(path.join(targetDir, '.clinerules'), 'utf8'),
+      fs.readFileSync(path.join(targetDir, '.clinerules', 'gsd.md'), 'utf8'),
       /GSD workflows live in `gsd-core\/workflows\/`/,
-      'Cline should install root .clinerules guidance'
+      'Cline should install .clinerules/gsd.md guidance'
     );
   }
 
