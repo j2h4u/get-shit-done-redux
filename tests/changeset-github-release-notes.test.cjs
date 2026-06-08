@@ -16,12 +16,13 @@ const {
   serializeGithubReleaseNotes,
   renderGithubReleaseNotes,
 } = require(path.join(ROOT, 'scripts', 'changeset', 'github-release-notes.cjs'));
+const { cleanup } = require('./helpers.cjs');
 
 const tempRepos = new Set();
 
 afterEach(() => {
   for (const repo of tempRepos) {
-    fs.rmSync(repo, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+    cleanup(repo);
   }
   tempRepos.clear();
 });
