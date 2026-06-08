@@ -36,6 +36,93 @@ function stripShippedMilestones(content: string): string {
   return content.replace(/<details>[\s\S]*?<\/details>/gi, '');
 }
 
+function normalizePhaseTokenForScope(token: string): string {
+  return token
+    .split('-')
+    .map((segment) => segment.replace(/^0+(?=\d)/, '') || '0')
+    .join('-')
+    .toLowerCase();
+}
+
+function collectReferencedPhaseTokens(content: string): Set<string> {
+  const refs = new Set<string>();
+  const phaseRefPattern = /\bPhase\s+([\w][\w.-]*)\s*:/gi;
+  let match: RegExpExecArray | null;
+  const unfencedContent = stripFencedLines(content);
+  while ((match = phaseRefPattern.exec(unfencedContent)) !== null) {
+    refs.add(normalizePhaseTokenForScope(match[1]));
+  }
+  return refs;
+}
+
+function collectPhaseHeadingMatches(content: string): Array<{ index: number; token: string }> {
+  const matches: Array<{ index: number; token: string }> = [];
+  const phaseHeadingPattern = /^#{2,4}\s*(?:\[[^\]]+\]\s*)?Phase\s+([\w][\w.-]*)\s*:/i;
+  let fenceChar: string | null = null;
+  let fenceLen = 0;
+  let offset = 0;
+
+  for (const line of content.split('\n')) {
+    const fenceMatch = line.match(/^\s{0,3}((?:`{3,}|~{3,}))(.*)/);
+    if (fenceMatch) {
+      const char = fenceMatch[1][0];
+      const len = fenceMatch[1].length;
+      const trailing = fenceMatch[2] || '';
+      if (!fenceChar) {
+        fenceChar = char;
+        fenceLen = len;
+      } else if (char === fenceChar && len >= fenceLen && /^\s*$/.test(trailing)) {
+        fenceChar = null;
+        fenceLen = 0;
+      }
+    } else if (!fenceChar) {
+      const headingMatch = line.match(phaseHeadingPattern);
+      if (headingMatch) {
+        matches.push({
+          index: offset + (headingMatch.index ?? 0),
+          token: normalizePhaseTokenForScope(headingMatch[1]),
+        });
+      }
+    }
+    offset += line.length + 1;
+  }
+
+  return matches;
+}
+
+function collectPhaseHeadingTokens(content: string): Set<string> {
+  return new Set(collectPhaseHeadingMatches(content).map((match) => match.token));
+}
+
+function appendReferencedPhaseDetailSections(fullContent: string, scopedContent: string): string {
+  const referenced = collectReferencedPhaseTokens(scopedContent);
+  if (referenced.size === 0) return scopedContent;
+
+  const alreadyDetailed = collectPhaseHeadingTokens(scopedContent);
+  for (const token of alreadyDetailed) referenced.delete(token);
+  if (referenced.size === 0) return scopedContent;
+
+  const searchableContent = stripShippedMilestones(fullContent);
+  const headings = collectPhaseHeadingMatches(searchableContent);
+  const additions: string[] = [];
+
+  for (let i = 0; i < headings.length; i++) {
+    const heading = headings[i];
+    if (!referenced.has(heading.token)) continue;
+
+    const next = headings[i + 1];
+    const end = next ? next.index : searchableContent.length;
+    const section = searchableContent.slice(heading.index, end).trim();
+    if (section && !scopedContent.includes(section)) {
+      additions.push(section);
+      referenced.delete(heading.token);
+    }
+  }
+
+  if (additions.length === 0) return scopedContent;
+  return `${scopedContent.trimEnd()}\n\n${additions.join('\n\n')}`;
+}
+
 /**
  * Extract the current milestone section from ROADMAP.md by positive lookup.
  */
@@ -93,7 +180,10 @@ function extractCurrentMilestone(content: string, cwd?: string): string {
           .replace(/<details>[\s\S]*?<\/details>/gi, '')
           .replace(/^#{2,4}\s*Phase\s+[\w][\w.-]*\s*:[^\n]*(?:\n(?!#{1,6}\s)[^\n]*)*\n?/gim, '')
           .replace(/^#{1,4}\s*Phase Details\b[^\n]*\n?/gim, '');
-        return preamble + content.slice(detailsOpenIdx, detailsEnd);
+        return appendReferencedPhaseDetailSections(
+          content,
+          preamble + content.slice(detailsOpenIdx, detailsEnd),
+        );
       }
     }
     return stripShippedMilestones(content);
@@ -189,9 +279,11 @@ function extractCurrentMilestone(content: string, cwd?: string): string {
     .replace(/^#{2,4}\s*Phase\s+[\w][\w.-]*\s*:[^\n]*(?:\n(?!#{1,6}\s)[^\n]*)*\n?/gim, '')
     .replace(/^#{1,4}\s*Phase Details\b[^\n]*\n?/gim, '');
 
-  return detailsSection
+  const scopedContent = detailsSection
     ? preamble + currentSection + '\n' + detailsSection
     : preamble + currentSection;
+
+  return appendReferencedPhaseDetailSections(content, scopedContent);
 }
 
 /**
