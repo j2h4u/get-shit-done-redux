@@ -266,6 +266,10 @@ tools: Read, Bash
 
 INIT=$(gsd-tools query init.plan-phase "\${PHASE}")
 gsd-tools query state.load 2>/dev/null
+echo ready && gsd-tools query after-ready
+false || gsd-tools query fallback
+echo next; gsd-tools query semicolon
+cat state.json | gsd-tools query pipe
 if command -v gsd-tools >/dev/null 2>&1; then echo "path fallback"; fi
 Use \`gsd-tools query history-digest\` for history.`;
 
@@ -281,6 +285,22 @@ Use \`gsd-tools query history-digest\` for history.`;
     assert.ok(
       result.includes('`node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query history-digest`'),
       'rewrites inline command example',
+    );
+    assert.ok(
+      result.includes('&& node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query after-ready'),
+      'rewrites command after &&',
+    );
+    assert.ok(
+      result.includes('|| node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query fallback'),
+      'rewrites command after ||',
+    );
+    assert.ok(
+      result.includes('; node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query semicolon'),
+      'rewrites command after ;',
+    );
+    assert.ok(
+      result.includes('| node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query pipe'),
+      'rewrites command after |',
     );
     assert.ok(result.includes('command -v gsd-tools'), 'keeps PATH resolver probe intact');
     assertNoCodexBareGsdToolsInvocation(result, 'converted Codex agent');
@@ -363,6 +383,10 @@ description: Quick task
 \`\`\`bash
 gsd-tools query frontmatter.get .planning/quick/example/SUMMARY.md status
 INIT=$(gsd-tools query init.quick)
+echo ready && gsd-tools query state.load
+false || gsd-tools query fallback
+echo next; gsd-tools query semicolon
+cat state.json | gsd-tools query pipe
 if command -v gsd-tools >/dev/null 2>&1; then echo ok; fi
 \`\`\`
 
@@ -380,6 +404,22 @@ Status fields read via \`gsd-tools query frontmatter.get\`.`;
     assert.ok(
       result.includes('`node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query frontmatter.get`'),
       'rewrites inline command example',
+    );
+    assert.ok(
+      result.includes('&& node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query state.load'),
+      'rewrites command after &&',
+    );
+    assert.ok(
+      result.includes('|| node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query fallback'),
+      'rewrites command after ||',
+    );
+    assert.ok(
+      result.includes('; node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query semicolon'),
+      'rewrites command after ;',
+    );
+    assert.ok(
+      result.includes('| node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query pipe'),
+      'rewrites command after |',
     );
     assert.ok(result.includes('command -v gsd-tools'), 'keeps resolver probe intact');
     assertNoCodexBareGsdToolsInvocation(result, 'converted Codex skill');
