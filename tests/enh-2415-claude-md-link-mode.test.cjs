@@ -17,12 +17,13 @@ const path = require('node:path');
 const os = require('node:os');
 
 const { cmdGenerateClaudeMd } = require('../gsd-core/bin/lib/profile-output.cjs');
+const { cleanup } = require('./helpers.cjs');
 
 const tempDirs = new Set();
 
 afterEach(() => {
   for (const dir of tempDirs) {
-    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+    cleanup(dir);
   }
   tempDirs.clear();
 });
