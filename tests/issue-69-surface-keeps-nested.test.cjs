@@ -29,14 +29,14 @@ const { resolveRuntimeArtifactLayout } = require('../gsd-core/bin/lib/runtime-ar
 const { cleanup } = require('./helpers.cjs');
 
 describe('issue-69: applySurface preserves nested skill layout (no re-flatten)', () => {
-  test('claude global full: applySurface keeps 6 router dirs and nested gsd-ns-workflow/skills/plan-phase/SKILL.md', (t) => {
+  test('cline global full: applySurface keeps 6 router dirs and nested gsd-ns-workflow/skills/plan-phase/SKILL.md', (t) => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-69-surface-'));
     t.after(() => { try { cleanup(tmpDir); } catch { /* best-effort */ } });
 
     // Step 1: full install
     const manifest = loadSkillsManifest(COMMANDS_GSD);
     const resolved = resolveProfile({ modes: ['full'], manifest });
-    installRuntimeArtifacts('claude', tmpDir, 'global', resolved);
+    installRuntimeArtifacts('cline', tmpDir, 'global', resolved);
 
     const skillsDir = path.join(tmpDir, 'skills');
 
@@ -53,7 +53,7 @@ describe('issue-69: applySurface preserves nested skill layout (no re-flatten)',
     );
 
     // Step 2: applySurface (full surface, no surface state file → resolves to full)
-    const layout = resolveRuntimeArtifactLayout('claude', tmpDir, 'global');
+    const layout = resolveRuntimeArtifactLayout('cline', tmpDir, 'global');
     applySurface(tmpDir, layout, manifest);
 
     // Step 3: assert nested layout is preserved after applySurface

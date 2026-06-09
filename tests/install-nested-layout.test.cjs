@@ -32,7 +32,6 @@ const { COMMANDS_GSD, ROUTER_STEMS, routerChildren } = require('./helpers/nested
 // ---------------------------------------------------------------------------
 
 const NEST = [
-  { runtime: 'claude',      scope: 'global', skillsSub: 'skills',     prefix: 'gsd-' },
   { runtime: 'cline',       scope: 'global', skillsSub: 'skills',     prefix: 'gsd-' },
   { runtime: 'qwen',        scope: 'global', skillsSub: 'skills',     prefix: 'gsd-' },
   { runtime: 'hermes',      scope: 'global', skillsSub: 'skills/gsd', prefix: ''     },
@@ -42,6 +41,7 @@ const NEST = [
 ];
 
 const FLAT = [
+  { runtime: 'claude',    scope: 'global', skillsSub: 'skills' },
   { runtime: 'cursor',    scope: 'global', skillsSub: 'skills' },
   { runtime: 'codex',     scope: 'global', skillsSub: 'skills' },
   { runtime: 'copilot',   scope: 'global', skillsSub: 'skills' },
@@ -200,36 +200,6 @@ for (const { runtime, scope, skillsSub, prefix } of NEST) {
 }
 
 // ---------------------------------------------------------------------------
-// claude extra: total top-level gsd- count must equal exactly 6
-// ---------------------------------------------------------------------------
-
-describe('claude: total top-level gsd- entries == 6', () => {
-  let tmpDir;
-
-  before(() => {
-    tmpDir = runInstall('claude', 'global', RESOLVED_FULL);
-  });
-
-  after(() => {
-    if (tmpDir) {
-      try { cleanup(tmpDir); } catch { /* best-effort */ }
-    }
-  });
-
-  test('claude: total top-level gsd- skill entries == 6', () => {
-    const skillsDir = path.join(tmpDir, 'skills');
-    assert.ok(fs.existsSync(skillsDir), 'skills/ dir must exist');
-
-    const topLevel = fs.readdirSync(skillsDir).filter((n) => n.startsWith('gsd-'));
-    assert.strictEqual(
-      topLevel.length,
-      6,
-      `Expected exactly 6 gsd-* top-level entries under claude/skills, got ${topLevel.length}: [${topLevel.join(', ')}]`,
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
 // FLAT runtimes: concrete skills stay top-level, no nesting
 // ---------------------------------------------------------------------------
 
@@ -259,6 +229,15 @@ for (const { runtime, scope, skillsSub } of FLAT) {
         gsdEntries.length >= 60,
         `Flat runtime ${runtime} must have >= 60 gsd-* top-level entries (concrete skills), got ${gsdEntries.length}`,
       );
+
+      if (runtime === 'claude') {
+        for (const requiredSkill of ['gsd-phase', 'gsd-plan-phase']) {
+          assert.ok(
+            fs.existsSync(path.join(skillsDir, requiredSkill, 'SKILL.md')),
+            `Claude/Harness must discover ${requiredSkill} as a top-level skill`,
+          );
+        }
+      }
 
       // No router dir should contain a skills/ subdirectory (nesting must not have been applied)
       const routerDirsPresent = topLevel.filter((n) => n.startsWith('gsd-ns-'));

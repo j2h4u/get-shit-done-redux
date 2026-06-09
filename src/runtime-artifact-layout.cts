@@ -281,8 +281,6 @@ function convertedCommandsKind(
 // flat conservatively. Verified June 2026:
 //
 //   NEST (confirmed non-recursive / one-level scan):
-//     claude     — https://code.claude.com/docs/en/skills + anthropics/claude-code#28266
-//                  (scans one level under ~/.claude/skills; nested skills not auto-listed)
 //     cline      — cline/cline skills.ts scanSkillsDirectory uses flat fs.readdir
 //     qwen       — QwenLM/qwen-code skill-load.ts flat readdir ("depth 2 enough")
 //     hermes     — hermes-agent.nousresearch.com/docs/user-guide/features/skills
@@ -297,6 +295,8 @@ function convertedCommandsKind(
 //     kilo       — Kilo-Org/kilocode (opencode fork, same ** glob)
 //
 //   FLAT (nested-scan behaviour unconfirmed → conservative):
+//     claude     — Claude Code/Harness users need concrete skills discoverable
+//                  at top level; nested router-only layout hides gsd-phase, etc.
 //     codex      — developers.openai.com/codex/skills/
 //     copilot    — docs.github.com/en/copilot/concepts/agents/about-agent-skills
 //     windsurf   — docs.devin.ai/desktop/cascade/skills
@@ -325,7 +325,7 @@ function resolveRuntimeArtifactLayout(runtime: string, configDir: string, scope:
           agentsKind('agents', 'gsd-', configDir),
         ];
       } else {
-        kinds = [skillsKind('skills', 'gsd-', 'convertClaudeCommandToClaudeSkill', 'claude', configDir, true /* #69 nested: non-recursive scan, see matrix above */)];
+        kinds = [skillsKind('skills', 'gsd-', 'convertClaudeCommandToClaudeSkill', 'claude', configDir)];
       }
       break;
 
