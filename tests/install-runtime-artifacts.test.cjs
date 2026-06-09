@@ -50,13 +50,13 @@ const RESOLVED_CORE = resolveProfile({ modes: ['core'], manifest: MANIFEST });
 
 const SKILLS_RUNTIMES_LAYOUT = [
   'claude', 'cursor', 'codex', 'copilot', 'antigravity',
-  'windsurf', 'augment', 'trae', 'qwen', 'codebuddy',
+  'windsurf', 'augment', 'trae', 'qwen', 'kimi', 'codebuddy',
 ];
 
 const ALL_RUNTIMES_LAYOUT = [
   'claude', 'cursor', 'gemini', 'codex', 'copilot', 'antigravity',
   'windsurf', 'augment', 'trae', 'qwen', 'hermes', 'codebuddy',
-  'cline', 'opencode', 'kilo',
+  'cline', 'kimi', 'opencode', 'kilo',
 ];
 
 function countPrefixedEntries(destDir, prefix) {
@@ -94,6 +94,40 @@ describe('installRuntimeArtifacts — skills runtimes write gsd-prefixed skill d
         fs.existsSync(path.join(destDir, `${skillsKind.prefix}help`, 'SKILL.md')),
         `${runtime}: ${skillsKind.prefix}help/SKILL.md must exist`
       );
+
+      if (runtime === 'kimi') {
+        const newProjectSkill = path.join(destDir, 'gsd-new-project', 'SKILL.md');
+        assert.ok(fs.existsSync(newProjectSkill), 'kimi: gsd-new-project/SKILL.md must exist');
+        const content = fs.readFileSync(newProjectSkill, 'utf8');
+        assert.match(content, /^name: gsd-new-project$/m);
+        assert.match(content, /\/skill:gsd-new-project/);
+        assert.doesNotMatch(content, /kimi_cli\.tools|system_prompt_path|^version: 1$/m);
+
+        const agentsDir = path.join(configDir, 'agents');
+        const rootYaml = path.join(agentsDir, 'gsd.yaml');
+        const rootPrompt = path.join(agentsDir, 'gsd.md');
+        const executorYaml = path.join(agentsDir, 'subagents', 'gsd-executor.yaml');
+        const executorPrompt = path.join(agentsDir, 'subagents', 'gsd-executor.md');
+        assert.ok(fs.existsSync(rootYaml), 'kimi: agents/gsd.yaml must exist');
+        assert.ok(fs.existsSync(rootPrompt), 'kimi: agents/gsd.md must exist');
+        assert.ok(fs.existsSync(executorYaml), 'kimi: agents/subagents/gsd-executor.yaml must exist');
+        assert.ok(fs.existsSync(executorPrompt), 'kimi: agents/subagents/gsd-executor.md must exist');
+
+        const rootYamlContent = fs.readFileSync(rootYaml, 'utf8');
+        assert.match(rootYamlContent, /^version: 1$/m);
+        assert.match(rootYamlContent, /^agent:$/m);
+        assert.match(rootYamlContent, /extend: default/);
+        assert.match(rootYamlContent, /system_prompt_path: \.\/gsd\.md/);
+        assert.match(rootYamlContent, /tools:/);
+        assert.match(rootYamlContent, /subagents:/);
+        assert.match(rootYamlContent, /kimi_cli\.tools\./);
+        assert.doesNotMatch(rootYamlContent, /mcp__/);
+
+        const executorYamlContent = fs.readFileSync(executorYaml, 'utf8');
+        assert.match(executorYamlContent, /system_prompt_path: \.\/gsd-executor\.md/);
+        assert.match(executorYamlContent, /kimi_cli\.tools\./);
+        assert.doesNotMatch(executorYamlContent, /mcp__/);
+      }
 
       if (RESOLVED_CORE.skills !== '*') {
         const prefixedCount = countPrefixedEntries(destDir, skillsKind.prefix || 'gsd-');
@@ -312,6 +346,14 @@ describe('uninstallRuntimeArtifacts — removes gsd-owned entries, preserves for
           const foreignDir = path.join(destDir, 'user-custom-skill');
           fs.mkdirSync(foreignDir, { recursive: true });
           fs.writeFileSync(path.join(foreignDir, 'SKILL.md'), '# user\n');
+        } else if (kind.kind === 'kimi-agents') {
+          fs.mkdirSync(path.join(destDir, 'subagents'), { recursive: true });
+          fs.writeFileSync(path.join(destDir, 'gsd.yaml'), 'version: 1\n');
+          fs.writeFileSync(path.join(destDir, 'gsd.md'), '# gsd\n');
+          fs.writeFileSync(path.join(destDir, 'subagents', 'gsd-executor.yaml'), 'version: 1\n');
+          fs.writeFileSync(path.join(destDir, 'subagents', 'gsd-executor.md'), '# executor\n');
+          fs.writeFileSync(path.join(destDir, 'user-agent.yaml'), 'version: 1\n');
+          fs.writeFileSync(path.join(destDir, 'subagents', 'user-agent.yaml'), 'version: 1\n');
         } else {
           writeCommandEntry(destDir, kind.prefix, 'help');
           writeCommandEntry(destDir, kind.prefix, 'phase');
@@ -327,6 +369,13 @@ describe('uninstallRuntimeArtifacts — removes gsd-owned entries, preserves for
           assert.ok(!fs.existsSync(path.join(destDir, `${kind.prefix}help`)));
           assert.ok(!fs.existsSync(path.join(destDir, `${kind.prefix}phase`)));
           assert.ok(fs.existsSync(path.join(destDir, 'user-custom-skill', 'SKILL.md')));
+        } else if (kind.kind === 'kimi-agents') {
+          assert.ok(!fs.existsSync(path.join(destDir, 'gsd.yaml')));
+          assert.ok(!fs.existsSync(path.join(destDir, 'gsd.md')));
+          assert.ok(!fs.existsSync(path.join(destDir, 'subagents', 'gsd-executor.yaml')));
+          assert.ok(!fs.existsSync(path.join(destDir, 'subagents', 'gsd-executor.md')));
+          assert.ok(fs.existsSync(path.join(destDir, 'user-agent.yaml')));
+          assert.ok(fs.existsSync(path.join(destDir, 'subagents', 'user-agent.yaml')));
         } else {
           assert.ok(!fs.existsSync(path.join(destDir, `${kind.prefix}help.md`)));
           assert.ok(!fs.existsSync(path.join(destDir, `${kind.prefix}phase.md`)));

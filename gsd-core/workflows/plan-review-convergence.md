@@ -1,8 +1,9 @@
 <purpose>
 Cross-AI plan convergence loop — automates the manual chain:
 gsd-plan-phase N → gsd-review N --codex → gsd-plan-phase N --reviews → gsd-review N --codex → ...
-Each step runs inside an isolated Agent that calls the corresponding Skill.
-Orchestrator only does: init, loop control, parse CYCLE_SUMMARY for unresolved HIGH and actionable non-HIGH review findings, stall detection, escalation.
+Plan-phase runs inline (bare Skill at depth 0) so it can spawn gsd-planner/gsd-plan-checker at depth 1.
+Review runs inside an isolated Agent (leaf skill — Bash only, no sub-agents needed).
+Orchestrator only does: init, loop control, parse CYCLE_SUMMARY for HIGH count, stall detection, escalation.
 </purpose>
 
 <required_reading>
@@ -43,7 +44,7 @@ echo "$ARGUMENTS" | grep -qE '\-\-ws\s+\S+' && GSD_WS=$(echo "$ARGUMENTS" | grep
 ## 1.5. Config Gate (feature disabled by default)
 
 ```bash
-_GSD_SHIM_NAME="gsd-tools.cjs"; _GSD_RUNTIME_ROOT="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"; GSD_TOOLS="${_GSD_RUNTIME_ROOT}/gsd-core/bin/${_GSD_SHIM_NAME}"; if [ -f "$GSD_TOOLS" ]; then gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif command -v gsd-tools >/dev/null 2>&1; then GSD_TOOLS="$(command -v gsd-tools)"; gsd_run() { "$GSD_TOOLS" "$@"; }; elif [ -f "$HOME/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="$HOME/.claude/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${HERMES_HOME:-$HOME/.hermes}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${HERMES_HOME:-$HOME/.hermes}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CURSOR_CONFIG_DIR:-$HOME/.cursor}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CURSOR_CONFIG_DIR:-$HOME/.cursor}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CODEX_HOME:-$HOME/.codex}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CODEX_HOME:-$HOME/.codex}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${GEMINI_CONFIG_DIR:-$HOME/.gemini}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${GEMINI_CONFIG_DIR:-$HOME/.gemini}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${WINDSURF_CONFIG_DIR:-$HOME/.codeium/windsurf}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${WINDSURF_CONFIG_DIR:-$HOME/.codeium/windsurf}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${AUGMENT_CONFIG_DIR:-$HOME/.augment}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${AUGMENT_CONFIG_DIR:-$HOME/.augment}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${TRAE_CONFIG_DIR:-$HOME/.trae}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${TRAE_CONFIG_DIR:-$HOME/.trae}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${QWEN_CONFIG_DIR:-$HOME/.qwen}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${QWEN_CONFIG_DIR:-$HOME/.qwen}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CODEBUDDY_CONFIG_DIR:-$HOME/.codebuddy}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CODEBUDDY_CONFIG_DIR:-$HOME/.codebuddy}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CLINE_CONFIG_DIR:-$HOME/.cline}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CLINE_CONFIG_DIR:-$HOME/.cline}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${GROK_AGENTS_HOME:-$HOME/.agents}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${GROK_AGENTS_HOME:-$HOME/.agents}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${ANTIGRAVITY_CONFIG_DIR:-$HOME/.gemini/antigravity}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${ANTIGRAVITY_CONFIG_DIR:-$HOME/.gemini/antigravity}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${KILO_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/kilo}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${KILO_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/kilo}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; else echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS, local .claude/.codex runtime roots, configured runtime homes, or gsd-tools on PATH. Run: npx -y @opengsd/gsd-core@latest --claude --local" >&2; exit 1; fi
+_GSD_SHIM_NAME="gsd-tools.cjs"; _GSD_RUNTIME_ROOT="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"; GSD_TOOLS="${_GSD_RUNTIME_ROOT}/gsd-core/bin/${_GSD_SHIM_NAME}"; if [ -f "$GSD_TOOLS" ]; then gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif command -v gsd-tools >/dev/null 2>&1; then GSD_TOOLS="$(command -v gsd-tools)"; gsd_run() { "$GSD_TOOLS" "$@"; }; elif [ -f "$HOME/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="$HOME/.claude/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${HERMES_HOME:-$HOME/.hermes}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${HERMES_HOME:-$HOME/.hermes}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CURSOR_CONFIG_DIR:-$HOME/.cursor}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CURSOR_CONFIG_DIR:-$HOME/.cursor}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CODEX_HOME:-$HOME/.codex}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CODEX_HOME:-$HOME/.codex}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${GEMINI_CONFIG_DIR:-$HOME/.gemini}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${GEMINI_CONFIG_DIR:-$HOME/.gemini}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${WINDSURF_CONFIG_DIR:-$HOME/.codeium/windsurf}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${WINDSURF_CONFIG_DIR:-$HOME/.codeium/windsurf}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${AUGMENT_CONFIG_DIR:-$HOME/.augment}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${AUGMENT_CONFIG_DIR:-$HOME/.augment}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${TRAE_CONFIG_DIR:-$HOME/.trae}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${TRAE_CONFIG_DIR:-$HOME/.trae}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${QWEN_CONFIG_DIR:-$HOME/.qwen}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${QWEN_CONFIG_DIR:-$HOME/.qwen}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CODEBUDDY_CONFIG_DIR:-$HOME/.codebuddy}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CODEBUDDY_CONFIG_DIR:-$HOME/.codebuddy}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${CLINE_CONFIG_DIR:-$HOME/.cline}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${CLINE_CONFIG_DIR:-$HOME/.cline}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${GROK_AGENTS_HOME:-$HOME/.agents}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${GROK_AGENTS_HOME:-$HOME/.agents}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${ANTIGRAVITY_CONFIG_DIR:-$HOME/.gemini/antigravity}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${ANTIGRAVITY_CONFIG_DIR:-$HOME/.gemini/antigravity}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; elif [ -f "${KILO_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/kilo}/gsd-core/bin/${_GSD_SHIM_NAME}" ]; then GSD_TOOLS="${KILO_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/kilo}/gsd-core/bin/${_GSD_SHIM_NAME}"; gsd_run() { node "$GSD_TOOLS" "$@"; }; else echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS and gsd-tools is not on PATH. Run: npx -y @opengsd/gsd-core@latest --claude --local" >&2; exit 1; fi
 CONVERGENCE_ENABLED=$(gsd_run query config-get workflow.plan_review_convergence 2>/dev/null || echo "false")
 ```
 
@@ -98,21 +99,15 @@ Display startup banner:
 
 **If `has_plans` is false:**
 
-Display: `◆ No plans found — spawning initial planning agent... (runs in a subagent — no output until it returns, ~1–5 min; expected, not a freeze)`
+Display: `◆ No plans found — running initial planning inline... (plan-phase runs here in the orchestrator — no output until planning is complete, ~1–5 min; expected, not a freeze)`
 
 ```text
-Agent(
-  description="Initial planning Phase {PHASE}",
-  prompt="Run /gsd:plan-phase for Phase {PHASE}.
-
-Execute: Skill(skill='gsd-plan-phase', args='{PHASE} {GSD_WS}')
-
-Complete the full planning workflow. Do NOT return until planning is complete and PLAN.md files are committed.",
-  mode="auto"
-)
+Skill(skill="gsd-plan-phase", args="{PHASE} {GSD_WS}")
 ```
 
-After agent returns, verify plans were created:
+Run plan-phase **inline** (do NOT wrap it in Agent()). The convergence orchestrator runs at depth 0 with Agent available, so inline plan-phase can spawn gsd-planner and gsd-plan-checker at depth 1 — the one level of nesting that works on Claude Code. Wrapping plan-phase in Agent() would push it to depth 1 where the Agent tool is absent, preventing it from spawning any sub-agents. Wait until plan-phase completes and PLAN.md files are committed before continuing.
+
+After plan-phase completes, verify plans were created:
 ```bash
 PLAN_COUNT=$(ls ${phase_dir}/${padded_phase}-*-PLAN.md 2>/dev/null | wc -l)
 ```
@@ -127,7 +122,7 @@ Initialize loop variables:
 
 ```text
 cycle = 0
-prev_unresolved_review_count = Infinity
+prev_high_count = Infinity
 ```
 
 ### 5a. Review (Spawn Agent)
@@ -148,12 +143,11 @@ Complete the full review workflow. Do NOT return until REVIEWS.md is committed.
 IMPORTANT — CYCLE_SUMMARY contract (required):
 Your final response MUST include a machine-readable line of exactly this form:
 
-  CYCLE_SUMMARY: current_high=<N> current_actionable=<M>
+  CYCLE_SUMMARY: current_high=<N>
 
 Where <N> is the integer count of HIGH-severity concerns that REMAIN UNRESOLVED in this cycle's findings.
-Where <M> is the integer count of unresolved non-HIGH MEDIUM/LOW findings that require changes to the latest PLAN.md files before execution.
 
-HIGH counting rules:
+Counting rules:
   INCLUDE in the count:
     - Newly raised HIGHs in this cycle
     - PARTIALLY RESOLVED HIGHs: concern acknowledged and a mitigation is in progress, but not yet verified/completed
@@ -168,26 +162,10 @@ Definitions:
   PARTIALLY RESOLVED — concern acknowledged and mitigation is in progress but not yet verified/completed (e.g., open ticket exists but fix not landed).
   FULLY RESOLVED — concern addressed with verification complete (closed ticket, verification log, or explicit reviewer sign-off confirming closure).
 
-Actionable non-HIGH counting rules:
-  INCLUDE in current_actionable:
-    - MEDIUM/LOW findings that require a concrete PLAN.md task, action, acceptance criterion, verification step, must_have, or threat/contract update before execution
-    - Previously raised MEDIUM/LOW findings that still are not represented in the latest PLAN.md files
-    - "Non-blocking" reviewer notes that still change what the executor must build or verify
-
-  EXCLUDE from current_actionable:
-    - INFO-only findings and source-grounding coverage notes
-    - MEDIUM/LOW findings already incorporated into the latest PLAN.md files with a concrete executable contract
-    - MEDIUM/LOW findings explicitly deferred or rejected in PLAN.md with a rationale the reviewer accepts
-    - Retrospective/history mentions from prior cycles
-
-Your final response MUST also include these sections immediately after the CYCLE_SUMMARY line:
+Your final response MUST also include this section immediately after the CYCLE_SUMMARY line:
 
 ## Current HIGH Concerns
 [List each unresolved HIGH with a brief description, one per bullet]
-[If none: write exactly 'None.']
-
-## Current Actionable Non-HIGH Findings
-[List each unresolved MEDIUM/LOW finding that still requires PLAN.md changes, one per bullet]
 [If none: write exactly 'None.']",
   mode="auto"
 )
@@ -216,44 +194,35 @@ REVIEWS_FILE=$(ls ${phase_dir}/${padded_phase}-REVIEWS.md 2>/dev/null)
 
 If REVIEWS_FILE is empty: Error — review agent did not produce REVIEWS.md. Exit.
 
-### 5b. Extract Unresolved Review Counts from CYCLE_SUMMARY Contract
+### 5b. Extract HIGH Count from CYCLE_SUMMARY Contract
 
-**Do NOT grep REVIEWS.md for HIGH/MEDIUM/LOW counts.** REVIEWS.md accumulates history across cycles — resolved findings from prior cycles remain in the file as audit trail, inflating a raw grep count and causing false stall detection.
+**Do NOT grep REVIEWS.md for HIGH count.** REVIEWS.md accumulates history across cycles — resolved HIGHs from prior cycles remain in the file as audit trail, inflating a raw grep count and causing false stall detection.
 
-Parse HIGH_COUNT and ACTIONABLE_COUNT from the review agent's return message via the CYCLE_SUMMARY contract:
+Parse HIGH_COUNT from the review agent's return message via the CYCLE_SUMMARY contract:
 
 ```bash
-# Extract integers from "CYCLE_SUMMARY: current_high=N current_actionable=M" in the agent's return message.
-SUMMARY_LINE=$(echo "$REVIEW_AGENT_RETURN" | grep -oE 'CYCLE_SUMMARY:\s*current_high=[0-9]+[[:space:]]+current_actionable=[0-9]+' | head -1)
-HIGH_COUNT=$(echo "$SUMMARY_LINE" | grep -oE 'current_high=[0-9]+' | grep -oE '[0-9]+$')
-ACTIONABLE_COUNT=$(echo "$SUMMARY_LINE" | grep -oE 'current_actionable=[0-9]+' | grep -oE '[0-9]+$')
+# Extract the integer from "CYCLE_SUMMARY: current_high=N" in the agent's return message
+HIGH_COUNT=$(echo "$REVIEW_AGENT_RETURN" | grep -oE 'CYCLE_SUMMARY:\s*current_high=[0-9]+' | head -1 | grep -oE '[0-9]+$')
 
-if [ -z "$HIGH_COUNT" ] || [ -z "$ACTIONABLE_COUNT" ]; then
+if [ -z "$HIGH_COUNT" ]; then
   # Distinguish malformed contract from completely absent contract
   if echo "$REVIEW_AGENT_RETURN" | grep -q 'CYCLE_SUMMARY:'; then
-    echo "CYCLE_SUMMARY present but current_high/current_actionable is malformed — expected: CYCLE_SUMMARY: current_high=<N> current_actionable=<M>. Retry or switch reviewer."
+    echo "CYCLE_SUMMARY present but current_high is malformed — expected integer, got non-numeric value. Retry or switch reviewer."
   else
-    echo "Review agent did not honor the CYCLE_SUMMARY contract — cannot determine unresolved review counts. Retry or switch reviewer."
+    echo "Review agent did not honor the CYCLE_SUMMARY contract — cannot determine HIGH count. Retry or switch reviewer."
   fi
   exit 1
 fi
 
-UNRESOLVED_REVIEW_COUNT=$((HIGH_COUNT + ACTIONABLE_COUNT))
-
 # Extract the ## Current HIGH Concerns section from the agent's return message
 HIGH_LINES=$(echo "$REVIEW_AGENT_RETURN" | awk '/^## Current HIGH Concerns/{found=1; next} found && /^##/{exit} found{print}')
-ACTIONABLE_LINES=$(echo "$REVIEW_AGENT_RETURN" | awk '/^## Current Actionable Non-HIGH Findings/{found=1; next} found && /^##/{exit} found{print}')
 
 if [ "${HIGH_COUNT}" -gt 0 ] && [ -z "${HIGH_LINES}" ]; then
   echo "⚠ Review agent's CYCLE_SUMMARY reports ${HIGH_COUNT} HIGHs but did not provide ## Current HIGH Concerns section — continuing with incomplete escalation details."
 fi
-
-if [ "${ACTIONABLE_COUNT}" -gt 0 ] && [ -z "${ACTIONABLE_LINES}" ]; then
-  echo "⚠ Review agent's CYCLE_SUMMARY reports ${ACTIONABLE_COUNT} actionable non-HIGH findings but did not provide ## Current Actionable Non-HIGH Findings section — continuing with incomplete escalation details."
-fi
 ```
 
-**If HIGH_COUNT == 0 AND ACTIONABLE_COUNT == 0 (converged):**
+**If HIGH_COUNT == 0 (converged):**
 
 ```bash
 gsd_run state planned-phase --phase "${PHASE}" --name "${phase_name}" --plans "${PLAN_COUNT}"
@@ -266,7 +235,7 @@ Display:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
  Phase {phase_number} converged in {cycle} cycle(s).
- No HIGH concerns or actionable non-HIGH plan changes remaining.
+ No HIGH concerns remaining.
 
  REVIEWS.md: {REVIEWS_FILE}
  Next: /gsd:execute-phase {PHASE}
@@ -274,16 +243,16 @@ Display:
 
 Exit — convergence achieved.
 
-**If HIGH_COUNT > 0 OR ACTIONABLE_COUNT > 0:** Continue to 5c. Actionable non-HIGH findings trigger replanning because execute-phase reads PLAN.md as the execution contract; review-only instructions must not remain stranded in REVIEWS.md.
+**If HIGH_COUNT > 0:** Continue to 5c.
 
 ### 5c. Stall Detection + Escalation Check
 
-Display: `◆ Cycle {cycle}/{MAX_CYCLES} — {HIGH_COUNT} HIGH concerns and {ACTIONABLE_COUNT} actionable non-HIGH findings found`
+Display: `◆ Cycle {cycle}/{MAX_CYCLES} — {HIGH_COUNT} HIGH concerns found`
 
-**Stall detection:** If `UNRESOLVED_REVIEW_COUNT >= prev_unresolved_review_count`:
+**Stall detection:** If `HIGH_COUNT >= prev_high_count`:
 ```text
-⚠ Convergence stalled — unresolved review finding count not decreasing
-  ({HIGH_COUNT} HIGH + {ACTIONABLE_COUNT} actionable non-HIGH findings; previous cycle had {prev_unresolved_review_count} total)
+⚠ Convergence stalled — HIGH concern count not decreasing
+  ({HIGH_COUNT} HIGH concerns, previous cycle had {prev_high_count})
 ```
 
 **Max cycles check:** If `cycle >= MAX_CYCLES`:
@@ -291,15 +260,13 @@ Display: `◆ Cycle {cycle}/{MAX_CYCLES} — {HIGH_COUNT} HIGH concerns and {ACT
 If `TEXT_MODE` is true, present as plain-text numbered list:
 ```text
 Plan convergence did not complete after {MAX_CYCLES} cycles.
-{HIGH_COUNT} HIGH concerns and {ACTIONABLE_COUNT} actionable non-HIGH findings remain:
+{HIGH_COUNT} HIGH concerns remain:
 
 {HIGH_LINES}
 
-{ACTIONABLE_LINES}
-
 How would you like to proceed?
 
-1. Proceed anyway — Accept plans with remaining review findings and move to execution
+1. Proceed anyway — Accept plans with remaining HIGH concerns and move to execution
 2. Manual review — Stop here, review REVIEWS.md and address concerns manually
 
 Enter number:
@@ -309,11 +276,11 @@ Otherwise use AskUserQuestion:
 ```js
 AskUserQuestion([
   {
-    question: "Plan convergence did not complete after {MAX_CYCLES} cycles. {HIGH_COUNT} HIGH concerns and {ACTIONABLE_COUNT} actionable non-HIGH findings remain:\n\n{HIGH_LINES}\n\n{ACTIONABLE_LINES}\n\nHow would you like to proceed?",
+    question: "Plan convergence did not complete after {MAX_CYCLES} cycles. {HIGH_COUNT} HIGH concerns remain:\n\n{HIGH_LINES}\n\nHow would you like to proceed?",
     header: "Convergence",
     multiSelect: false,
     options: [
-      { label: "Proceed anyway", description: "Accept plans with remaining review findings and move to execution" },
+      { label: "Proceed anyway", description: "Accept plans with remaining HIGH concerns and move to execution" },
       { label: "Manual review", description: "Stop here — review REVIEWS.md and address concerns manually" }
     ]
   }
@@ -330,48 +297,36 @@ To restart loop:     /gsd:plan-review-convergence {PHASE} {REVIEWER_FLAGS}
 ```
 Exit workflow.
 
-### 5d. Replan (Spawn Agent)
+### 5d. Replan (Inline)
 
 **If under max cycles:**
 
-Update `prev_unresolved_review_count = UNRESOLVED_REVIEW_COUNT`.
+Update `prev_high_count = HIGH_COUNT`.
 
-Display: `◆ Spawning replan agent with review feedback... (runs in a subagent — no output until it returns, ~1–5 min; expected, not a freeze)`
+Display: `◆ Replanning inline with review feedback... (plan-phase runs here in the orchestrator — no output until replanning is complete, ~1–5 min; expected, not a freeze)`
 
 ```text
-Agent(
-  description="Replan Phase {PHASE} with review feedback cycle {cycle}",
-  prompt="Run /gsd:plan-phase with --reviews for Phase {PHASE}.
-
-Execute: Skill(skill='gsd-plan-phase', args='{PHASE} --reviews --skip-research {GSD_WS}')
-
-This will replan incorporating cross-AI review feedback from REVIEWS.md.
-It MUST incorporate every current actionable review finding into executable PLAN.md content or explicitly document an accepted deferral/rejection in PLAN.md.
-Do NOT return until replanning is complete and updated PLAN.md files are committed.
-
-IMPORTANT: When gsd-plan-phase outputs '## PLANNING COMPLETE', that means replanning is done. Return at that point.",
-  mode="auto"
-)
+Skill(skill="gsd-plan-phase", args="{PHASE} --reviews --skip-research {GSD_WS}")
 ```
 
-After agent returns → go back to **step 5a** (review again).
+Run plan-phase **inline** (do NOT wrap it in Agent()). Same rationale as step 4: the convergence orchestrator runs at depth 0 with Agent available, so inline plan-phase can spawn gsd-planner and gsd-plan-checker at depth 1. Wrapping in Agent() pushes plan-phase to depth 1 where the Agent tool is absent — the replan loop can never produce a revised plan when HIGHs are found. This is the root cause of bug #936. Wait until plan-phase completes (outputs '## PLANNING COMPLETE') and updated PLAN.md files are committed before continuing.
+
+After plan-phase completes → go back to **step 5a** (review again).
 
 </process>
 
 <success_criteria>
 - [ ] Config gate checked before running — exits with enable instructions if workflow.plan_review_convergence is false
-- [ ] Initial planning via Agent → Skill("gsd-plan-phase") if no plans exist
-- [ ] Review via Agent → Skill("gsd-review") — isolated, not inline; {GSD_WS} forwarded
-- [ ] Replan via Agent → Skill("gsd-plan-phase --reviews") — isolated, not inline
-- [ ] Orchestrator only does: init, config gate, loop control, parse CYCLE_SUMMARY for unresolved HIGH/actionable non-HIGH counts, stall detection, escalation
-- [ ] HIGH and actionable non-HIGH counts extracted from review agent's CYCLE_SUMMARY return message (not by grepping REVIEWS.md)
-- [ ] Review agent prompt defines CYCLE_SUMMARY: current_high=<N> current_actionable=<M> contract with PARTIALLY/FULLY RESOLVED definitions
-- [ ] Convergence requires both HIGH_COUNT == 0 and ACTIONABLE_COUNT == 0 so review findings cannot remain only in REVIEWS.md
+- [ ] Initial planning via inline Skill("gsd-plan-phase") if no plans exist — NOT wrapped in Agent() (bug #936: depth-1 Agent has no Agent tool)
+- [ ] Review via Agent → Skill("gsd-review") — isolated Agent is correct; gsd-review is a Bash leaf with no sub-agent spawns; {GSD_WS} forwarded
+- [ ] Replan via inline Skill("gsd-plan-phase --reviews") — NOT wrapped in Agent(); inline lets plan-phase spawn gsd-planner/gsd-plan-checker at depth 1
+- [ ] Orchestrator only does: init, config gate, loop control, parse CYCLE_SUMMARY for HIGH count, stall detection, escalation
+- [ ] HIGH count extracted from review agent's CYCLE_SUMMARY return message (not by grepping REVIEWS.md)
+- [ ] Review agent prompt defines CYCLE_SUMMARY: current_high=<N> contract with PARTIALLY/FULLY RESOLVED definitions
 - [ ] Abort with clear error if CYCLE_SUMMARY is absent; distinguish malformed from absent
 - [ ] Warn if HIGH_COUNT > 0 but ## Current HIGH Concerns section is absent from return message
-- [ ] Warn if ACTIONABLE_COUNT > 0 but ## Current Actionable Non-HIGH Findings section is absent from return message
-- [ ] Each Agent fully completes its Skill before returning
-- [ ] Loop exits on: no HIGH concerns and no actionable non-HIGH findings (converged) OR max cycles (escalation)
-- [ ] Stall detection reported when unresolved review finding count is not decreasing
+- [ ] The review Agent fully completes gsd-review before returning (plan-phase runs inline — no Agent wrap)
+- [ ] Loop exits on: no HIGH concerns (converged) OR max cycles (escalation)
+- [ ] Stall detection reported when HIGH count not decreasing
 - [ ] STATE.md updated on convergence completion
 </success_criteria>

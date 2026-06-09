@@ -15,6 +15,7 @@
 
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import installProfiles = require('./install-profiles.cjs');
 const {
@@ -67,6 +68,7 @@ function getInstallExports(): InstallExports {
 // ---------------------------------------------------------------------------
 
 type ArtifactKindName = 'commands' | 'agents' | 'skills';
+type KimiArtifactKindName = ArtifactKindName | 'kimi-agents';
 
 // Mirrors the (unexported) ResolvedProfile in install-profiles.cts.
 // Must stay in sync if that shape changes.
@@ -77,7 +79,7 @@ interface ResolvedProfile {
 }
 
 interface ArtifactKind {
-  kind: ArtifactKindName;
+  kind: KimiArtifactKindName;
   destSubpath: string;
   prefix: string;
   stage: (resolvedProfile: ResolvedProfile) => string;
@@ -171,7 +173,7 @@ function findAgentsSourceRoot(runtimeConfigDir?: string): string {
 const ALLOWED_RUNTIMES = new Set([
   'claude', 'cursor', 'gemini', 'codex', 'copilot', 'antigravity',
   'windsurf', 'augment', 'trae', 'qwen', 'hermes', 'codebuddy',
-  'cline', 'opencode', 'kilo',
+  'cline', 'kimi', 'opencode', 'kilo',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -193,6 +195,50 @@ function agentsKind(destSubpath: string, prefix: string, configDir: string): Art
     destSubpath,
     prefix,
     stage: (resolved) => stageAgentsForProfile(findAgentsSourceRoot(configDir), resolved),
+  };
+}
+
+function kimiAgentsKind(destSubpath: string, prefix: string, configDir: string): ArtifactKind {
+  return {
+    kind: 'kimi-agents',
+    destSubpath,
+    prefix,
+    stage: (resolved) => {
+      const installExports = getInstallExports();
+      const buildKimiAgentArtifacts = installExports['buildKimiAgentArtifacts'] as (opts: {
+        rootAgent?: string;
+        subagents?: Array<{ path: string; content: string }>;
+      }) => {
+        root: { yaml: string; prompt: string };
+        subagents: Array<{ name: string; yaml: string; prompt: string }>;
+      };
+      const stagedAgents = stageAgentsForProfile(findAgentsSourceRoot(configDir), resolved);
+      const subagents: Array<{ path: string; content: string }> = [];
+      if (fs.existsSync(stagedAgents)) {
+        for (const entry of fs.readdirSync(stagedAgents, { withFileTypes: true })) {
+          if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+          const agentPath = path.join(stagedAgents, entry.name);
+          subagents.push({
+            path: path.join('agents', entry.name).replace(/\\/g, '/'),
+            content: fs.readFileSync(agentPath, 'utf8'),
+          });
+        }
+      }
+
+      const rootAgent = `---\nname: gsd\ndescription: Run GSD workflows in Kimi CLI.\ntools: Agent\n---\n\n# GSD for Kimi CLI\n\nCoordinate installed /skill:gsd-* workflows and route work to generated GSD subagents when a workflow requires an agent handoff.\n`;
+      const artifacts = buildKimiAgentArtifacts({ rootAgent, subagents });
+      const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-kimi-agents-'));
+      installProfiles.STAGED_DIRS.add(stageDir);
+      fs.writeFileSync(path.join(stageDir, 'gsd.yaml'), artifacts.root.yaml);
+      fs.writeFileSync(path.join(stageDir, 'gsd.md'), artifacts.root.prompt);
+      const subagentsDir = path.join(stageDir, 'subagents');
+      fs.mkdirSync(subagentsDir, { recursive: true });
+      for (const artifact of artifacts.subagents) {
+        fs.writeFileSync(path.join(subagentsDir, `${artifact.name}.yaml`), artifact.yaml);
+        fs.writeFileSync(path.join(subagentsDir, `${artifact.name}.md`), artifact.prompt);
+      }
+      return stageDir;
+    },
   };
 }
 
@@ -401,6 +447,15 @@ function resolveRuntimeArtifactLayout(runtime: string, configDir: string, scope:
 
     case 'cline':
       kinds = scope === 'global' ? [skillsKind('skills', 'gsd-', 'convertClaudeCommandToClineSkill', 'cline', configDir, true /* #69 nested */)] : [];
+      break;
+
+    case 'kimi':
+      kinds = scope === 'global'
+        ? [
+            skillsKind('skills', 'gsd-', 'convertClaudeCommandToKimiSkill', 'kimi', configDir),
+            kimiAgentsKind('agents', 'gsd', configDir),
+          ]
+        : [];
       break;
 
     case 'opencode':
