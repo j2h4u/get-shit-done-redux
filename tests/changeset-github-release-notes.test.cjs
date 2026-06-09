@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const cp = require('node:child_process');
+const helpers = require('./helpers.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const SCRIPT = path.join(ROOT, 'scripts', 'changeset', 'cli.cjs');
@@ -74,8 +75,11 @@ function createTaggedRepo() {
 }
 
 describe('changeset github release notes: tag-range renderer (#3382)', () => {
+  let _repo;
+  afterEach(() => { helpers.cleanup(_repo); _repo = undefined; });
+
   test('loads changed changeset slugs from a git tag range', () => {
-    const repo = createTaggedRepo();
+    const repo = (_repo = createTaggedRepo());
     const result = loadFragmentsFromRange({ repo, fromRef: 'v1.0.0', toRef: 'v1.0.1' });
 
     assert.deepEqual(result.failures, []);
@@ -89,7 +93,7 @@ describe('changeset github release notes: tag-range renderer (#3382)', () => {
   });
 
   test('builds grouped GitHub release-note IR from parsed fragments', () => {
-    const repo = createTaggedRepo();
+    const repo = (_repo = createTaggedRepo());
     const { fragments } = loadFragmentsFromRange({ repo, fromRef: 'v1.0.0', toRef: 'v1.0.1' });
     const ir = buildGithubReleaseNotesIr({ fragments });
 
@@ -106,7 +110,7 @@ describe('changeset github release notes: tag-range renderer (#3382)', () => {
   });
 
   test('CLI writes a notes file suitable for gh release edit --notes-file', () => {
-    const repo = createTaggedRepo();
+    const repo = (_repo = createTaggedRepo());
     const output = path.join(repo, 'release-notes.md');
     const result = cp.spawnSync(
       process.execPath,
@@ -141,7 +145,7 @@ describe('changeset github release notes: tag-range renderer (#3382)', () => {
   });
 
   test('rejects unsafe git refs before rendering a range', () => {
-    const repo = createTaggedRepo();
+    const repo = (_repo = createTaggedRepo());
     assert.throws(
       () => loadFragmentsFromRange({ repo, fromRef: '--help', toRef: 'v1.0.1' }),
       /Invalid git ref/,

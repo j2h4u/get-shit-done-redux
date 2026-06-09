@@ -7576,18 +7576,18 @@ function installRuntimeArtifacts(runtime, configDir, scope, resolvedProfile) {
     // stagedForCopy: the directory to copy from (may differ from staged if rewrites
     // produce a temp copy — see applyRuntimeContentRewritesForCommandsInPlace).
     let stagedForCopy = staged;
-    let removeStagedForCopy = false;
+    if (kind.kind === 'skills') {
+      applyRuntimeContentRewritesInPlace(staged, runtime, pathPrefix);
+    } else if (kind.kind === 'commands') {
+      // Returns a temp dir with rewritten content so source files are never mutated.
+      stagedForCopy = applyRuntimeContentRewritesForCommandsInPlace(staged, runtime, pathPrefix);
+    }
+    // applyRuntimeContentRewritesForCommandsInPlace() returns a fresh mkdtemp dir under
+    // os.tmpdir() (gsd-cmd-rewrites-*); remove it once copied so it does not accumulate (#856).
+    const tempToClean = stagedForCopy !== staged ? stagedForCopy : null;
     try {
-      if (kind.kind === 'skills') {
-        applyRuntimeContentRewritesInPlace(staged, runtime, pathPrefix);
-      } else if (kind.kind === 'commands') {
-        // Returns a temp dir with rewritten content so source files are never mutated.
-        stagedForCopy = applyRuntimeContentRewritesForCommandsInPlace(staged, runtime, pathPrefix);
-        removeStagedForCopy = stagedForCopy !== staged;
-      }
       const dest = path.join(layout.configDir, kind.destSubpath);
       fs.mkdirSync(dest, { recursive: true });
-
       if (kind.kind === 'skills' && fs.existsSync(dest)) {
         // Pre-prune: snapshot user-owned content before _removeGsdEntries wipes it,
         // then restore after. This preserves user dirs across a wipe-and-replace
@@ -7640,8 +7640,8 @@ function installRuntimeArtifacts(runtime, configDir, scope, resolvedProfile) {
         _copyStaged(stagedForCopy, dest, kind);
       }
     } finally {
-      if (removeStagedForCopy) {
-        try { fs.rmSync(stagedForCopy, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
+      if (tempToClean) {
+        try { fs.rmSync(tempToClean, { recursive: true, force: true }); } catch { /* best-effort */ }
       }
     }
   }

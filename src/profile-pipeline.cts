@@ -17,8 +17,8 @@ import path from 'node:path';
 import os from 'node:os';
 import readline from 'node:readline';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-import core = require('./core.cjs');
-const { output, error, reapStaleTempFiles, GSD_TEMP_DIR } = core;
+import ioModule = require('./io.cjs');
+const { output, error, reapStaleTempFiles, ensureGsdTempDir, GSD_TEMP_DIR } = ioModule;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -413,7 +413,7 @@ async function cmdExtractMessages(projectArg: string, options: { sessionId?: str
   }
 
   reapStaleTempFiles('gsd-pipeline-', { dirsOnly: true });
-  fs.mkdirSync(GSD_TEMP_DIR, { recursive: true });
+  ensureGsdTempDir();
   const tmpDir = fs.mkdtempSync(path.join(GSD_TEMP_DIR, 'gsd-pipeline-'));
   const outputPath = path.join(tmpDir, 'extracted-messages.jsonl');
 
@@ -602,7 +602,7 @@ async function cmdProfileSample(overridePath: string | null | undefined, options
   }
 
   reapStaleTempFiles('gsd-profile-', { dirsOnly: true });
-  fs.mkdirSync(GSD_TEMP_DIR, { recursive: true });
+  ensureGsdTempDir();
   const tmpDir = fs.mkdtempSync(path.join(GSD_TEMP_DIR, 'gsd-profile-'));
   const outputPath = path.join(tmpDir, 'profile-sample.jsonl');
   for (const msg of allMessages) {
