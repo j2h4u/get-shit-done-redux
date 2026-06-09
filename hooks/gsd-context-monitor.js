@@ -28,6 +28,12 @@ const CRITICAL_THRESHOLD = 25; // remaining_percentage <= 25%
 const STALE_SECONDS = 60;      // ignore metrics older than 60s
 const DEBOUNCE_CALLS = 5;      // min tool uses between warnings
 
+function resolveHookEventName(data) {
+  const payloadEvent = data && typeof data.hook_event_name === 'string' ? data.hook_event_name.trim() : '';
+  if (payloadEvent) return payloadEvent;
+  return process.env.GEMINI_API_KEY ? 'AfterTool' : 'PostToolUse';
+}
+
 let input = '';
 // Timeout guard: if stdin doesn't close within 10s (e.g. pipe issues on
 // Windows/Git Bash, or slow Claude Code piping during large outputs),
@@ -182,7 +188,7 @@ process.stdin.on('end', () => {
 
     const output = {
       hookSpecificOutput: {
-        hookEventName: process.env.GEMINI_API_KEY ? "AfterTool" : "PostToolUse",
+        hookEventName: resolveHookEventName(data),
         additionalContext: message
       }
     };

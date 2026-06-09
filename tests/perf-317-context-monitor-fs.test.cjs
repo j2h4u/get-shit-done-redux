@@ -34,6 +34,7 @@ const tmpDir = os.tmpdir();
  * @param {number}  [opts.usedPct]     - used_pct for bridge file
  * @param {boolean} [opts.writeWarn]   - if true, write a warn sentinel before spawn
  * @param {object}  [opts.warnData]    - content for warn sentinel (defaults to first-warn-like data)
+ * @param {string}  [opts.hookEventName] - hook_event_name to include in stdin payload
  * @returns {{ exitCode: number, stdout: string }}
  */
 function runMonitorRaw(opts) {
@@ -45,6 +46,7 @@ function runMonitorRaw(opts) {
     usedPct = 80,
     writeWarn = false,
     warnData = null,
+    hookEventName = null,
   } = opts;
 
   const metricsPath = path.join(tmpDir, `claude-ctx-${sessionId}.json`);
@@ -64,7 +66,9 @@ function runMonitorRaw(opts) {
     fs.writeFileSync(warnPath, JSON.stringify(wd));
   }
 
-  const input = JSON.stringify({ session_id: sessionId, cwd });
+  const payload = { session_id: sessionId, cwd };
+  if (hookEventName) payload.hook_event_name = hookEventName;
+  const input = JSON.stringify(payload);
   let stdout = '';
   let exitCode = 0;
 
@@ -122,6 +126,27 @@ describe('perf #317: metrics file absent (exercises ENOENT early-exit path)', ()
     assert.ok(
       parsed?.hookSpecificOutput?.additionalContext,
       'output must contain hookSpecificOutput.additionalContext'
+    );
+  });
+});
+
+describe('context monitor hook event identity', () => {
+  test('echoes Stop when invoked from a Stop hook payload', () => {
+    const sessionId = `test-stop-event-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const { stdout } = runMonitorRaw({
+      sessionId,
+      writeMetrics: true,
+      remaining: 20,
+      usedPct: 80,
+      hookEventName: 'Stop',
+    });
+
+    assert.ok(stdout.length > 0, 'hook should emit JSON when metrics are present and context is low');
+    const parsed = JSON.parse(stdout);
+    assert.strictEqual(
+      parsed?.hookSpecificOutput?.hookEventName,
+      'Stop',
+      'context monitor must return the triggering hook event name, not hard-code PostToolUse'
     );
   });
 });
