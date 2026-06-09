@@ -370,7 +370,7 @@ The `gsd-planner` agent is decomposed into a core agent plus reference modules t
 
 ---
 
-## CLI Modules (99 shipped)
+## CLI Modules (101 shipped)
 
 Full listing: `gsd-core/bin/lib/*.cjs`.
 
@@ -404,6 +404,7 @@ Full listing: `gsd-core/bin/lib/*.cjs`.
 | `docs.cjs` | Docs-update workflow init, Markdown scanning, monorepo detection |
 | `drift.cjs` | Post-execute codebase structural drift detector (#2003): classifies file changes into new-dir/barrel/migration/route categories and round-trips `last_mapped_commit` frontmatter |
 | `fallow-runner.cjs` | Fallow audit adapter for `/gsd-code-review`: binary resolution (`PATH` then `node_modules/.bin`), actionable missing-binary errors, and structural findings normalization |
+| `federated-config.cjs` | Defensive merge of capability-declared config slices into the loadConfig return value — ADR-857 phase 3b; exports `mergeFederatedConfig({ configSchema, isCentralKey, userConfig })` → `{ values, validKeys, warnings }`; no-op until a key is atomically removed from the central config-schema (the cutover step) |
 | `frontmatter.cjs` | YAML frontmatter CRUD operations |
 | `gap-checker.cjs` | Post-planning gap analysis (#2493): unified REQUIREMENTS.md + CONTEXT.md decisions vs PLAN.md coverage report (`gsd-tools gap-analysis`) |
 | `graphify.cjs` | Knowledge-graph build/query/status/diff for `/gsd-graphify` |
@@ -419,6 +420,7 @@ Full listing: `gsd-core/bin/lib/*.cjs`.
 | `learnings.cjs` | Cross-phase learnings extraction for `/gsd-extract-learnings` |
 | `legacy-cleanup.cjs` | Detect and remove leftover get-shit-done-cc artifacts; exports `planLegacyCleanup` (pure scan) and `applyLegacyCleanup` (thin IO applier) that root out stale files from the old package across every GSD-managed runtime config directory (#607) |
 | `loop-host-contract.cjs` | Generated Loop Host Contract — 12 loop points, per-step agent roles, and core artifacts for the five-step pipeline (discuss/plan/execute/verify/ship); emitted by `scripts/gen-loop-host-contract.cjs --write` (ADR-894 §3); consumed by `gen-capability-registry.cjs` |
+| `loop-resolver.cjs` | Loop Extension Point resolver — ADR-857 phase 3c registry-consuming query; given a canonical loop point, filters `byLoopPoint` by config activation (`when` key traversal with prototype-pollution guard), returns `{ point, activeHooks, rendered }` envelope; `resolveLoopHooks` and `renderLoopHooks` are pure (no I/O); command surface: `gsd-tools loop render-hooks <point>` |
 | `milestone.cjs` | Milestone archival, requirements marking |
 | `model-catalog.cjs` | CJS adapter over the shared model catalog JSON; exports canonical runtime tier defaults, agent profile maps, alias maps, and routing metadata for all CLI consumers |
 | `model-profiles.cjs` | Backward-compatible profile helpers derived from `model-catalog.cjs`; no longer owns its own model table |
