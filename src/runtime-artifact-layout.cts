@@ -294,6 +294,12 @@ function convertedCommandsKind(
 //     opencode   — sst/opencode skill/index.ts glob "skills/**/SKILL.md"
 //     kilo       — Kilo-Org/kilocode (opencode fork, same ** glob)
 //
+//   FLAT (reverted from nested — nested skills not discoverable by Skill tool, #924):
+//     claude     — https://code.claude.com/docs/en/skills + anthropics/claude-code#28266
+//                  (one-level scan under ~/.claude/skills — but Skill-tool errors on unknown
+//                   names rather than re-routing via the router; concrete skills must be
+//                   at the top level so Skill(skill="gsd-plan-phase") succeeds)
+//
 //   FLAT (nested-scan behaviour unconfirmed → conservative):
 //     claude     — Claude Code/Harness users need concrete skills discoverable
 //                  at top level; nested router-only layout hides gsd-phase, etc.

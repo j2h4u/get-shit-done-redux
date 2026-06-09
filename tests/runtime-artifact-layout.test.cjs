@@ -417,7 +417,7 @@ describe('stage — skills kind (claude global)', () => {
     assert.ok(entries.length >= 1, 'at least one skill dir should be staged');
   });
 
-  test('stage with skills="*" stages all commands/gsd/*.md as flat skills (claude)', () => {
+  test('stage with skills="*" produces flat layout for claude (#924: reverted from nested)', () => {
     const layout = resolveRuntimeArtifactLayout('claude', FAKE_STAGE_DIR, 'global');
     const skillsKind = layout.kinds.find(k => k.kind === 'skills');
     assert.ok(skillsKind, 'should have a skills kind');
@@ -425,26 +425,22 @@ describe('stage — skills kind (claude global)', () => {
     const stagedDir = skillsKind.stage(PROFILE_FULL);
     assert.ok(fs.existsSync(stagedDir), 'stagedDir must exist');
 
+    // #924: Claude is reverted to FLAT. Full profile produces >= 60 top-level gsd-* dirs.
+    // (Previously nested: exactly 6 gsd-ns-* router dirs. That broke Skill-tool discovery.)
     const topEntries = fs.readdirSync(stagedDir);
-    assert.ok(topEntries.length >= 60, `full profile should have >= 60 flat skill dirs, got ${topEntries.length}`);
+    assert.ok(
+      topEntries.length >= 60,
+      `full profile should have >= 60 top-level skill dirs (flat layout, #924), got ${topEntries.length}`,
+    );
     for (const entry of topEntries) {
-      assert.ok(entry.startsWith('gsd-'), `top-level entry should be a gsd-* skill: ${entry}`);
+      assert.ok(entry.startsWith('gsd-'), `entry should start with gsd-: ${entry}`);
+      // Each skill dir has its own SKILL.md at the top level.
       const skillMd = path.join(stagedDir, entry, 'SKILL.md');
-      assert.ok(fs.existsSync(skillMd), `SKILL.md must exist in ${entry}`);
+      assert.ok(fs.existsSync(skillMd), `SKILL.md must exist at top level in ${entry}`);
+      // No nested skills/ subdirectory: flat layout means no nesting.
+      const skillsSubdir = path.join(stagedDir, entry, 'skills');
+      assert.ok(!fs.existsSync(skillsSubdir), `skills/ subdir must NOT exist in ${entry} (flat layout, #924)`);
     }
-
-    // Total SKILL.md files across all routers + nested children must be large (proves no skill was dropped).
-    function countSkillMdFiles(dir) {
-      let count = 0;
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) count += countSkillMdFiles(fullPath);
-        else if (entry.name === 'SKILL.md') count++;
-      }
-      return count;
-    }
-    const totalSkillMd = countSkillMdFiles(stagedDir);
-    assert.strictEqual(totalSkillMd, topEntries.length, 'Claude flat layout should have one SKILL.md per top-level skill dir');
   });
 });
 

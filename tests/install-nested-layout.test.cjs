@@ -32,6 +32,8 @@ const { COMMANDS_GSD, ROUTER_STEMS, routerChildren } = require('./helpers/nested
 // ---------------------------------------------------------------------------
 
 const NEST = [
+  // Claude reverted to flat (#924: nested layout breaks Skill-tool discovery on Claude Code).
+  // Only the 6 runtimes below keep the nested layout.
   { runtime: 'cline',       scope: 'global', skillsSub: 'skills',     prefix: 'gsd-' },
   { runtime: 'qwen',        scope: 'global', skillsSub: 'skills',     prefix: 'gsd-' },
   { runtime: 'hermes',      scope: 'global', skillsSub: 'skills/gsd', prefix: ''     },
@@ -41,6 +43,8 @@ const NEST = [
 ];
 
 const FLAT = [
+  // Claude reverted to flat (#924): Claude Code scans only one level under ~/.claude/skills/
+  // so nested concretes were never discoverable by the Skill tool.
   { runtime: 'claude',    scope: 'global', skillsSub: 'skills' },
   { runtime: 'cursor',    scope: 'global', skillsSub: 'skills' },
   { runtime: 'codex',     scope: 'global', skillsSub: 'skills' },
@@ -200,6 +204,39 @@ for (const { runtime, scope, skillsSub, prefix } of NEST) {
 }
 
 // ---------------------------------------------------------------------------
+// claude extra: total top-level gsd- count must be >= 60 (FLAT, #924)
+//
+// Pre-#924 (nested) this block asserted exactly 6 (only routers).
+// Post-#924 (flat) Claude has all concrete skills at the top level.
+// ---------------------------------------------------------------------------
+
+describe('claude: total top-level gsd- entries >= 60 (flat layout, #924)', () => {
+  let tmpDir;
+
+  before(() => {
+    tmpDir = runInstall('claude', 'global', RESOLVED_FULL);
+  });
+
+  after(() => {
+    if (tmpDir) {
+      try { cleanup(tmpDir); } catch { /* best-effort */ }
+    }
+  });
+
+  test('claude: >= 60 gsd-* top-level skill entries (concrete flat layout, not nested)', () => {
+    const skillsDir = path.join(tmpDir, 'skills');
+    assert.ok(fs.existsSync(skillsDir), 'skills/ dir must exist');
+
+    const topLevel = fs.readdirSync(skillsDir).filter((n) => n.startsWith('gsd-'));
+    assert.ok(
+      topLevel.length >= 60,
+      `Expected >= 60 gsd-* top-level entries under claude/skills (flat layout after #924 fix). ` +
+      `Got ${topLevel.length}: [${topLevel.slice(0, 10).join(', ')}${topLevel.length > 10 ? ', …' : ''}]`,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // FLAT runtimes: concrete skills stay top-level, no nesting
 // ---------------------------------------------------------------------------
 
@@ -229,15 +266,6 @@ for (const { runtime, scope, skillsSub } of FLAT) {
         gsdEntries.length >= 60,
         `Flat runtime ${runtime} must have >= 60 gsd-* top-level entries (concrete skills), got ${gsdEntries.length}`,
       );
-
-      if (runtime === 'claude') {
-        for (const requiredSkill of ['gsd-phase', 'gsd-plan-phase']) {
-          assert.ok(
-            fs.existsSync(path.join(skillsDir, requiredSkill, 'SKILL.md')),
-            `Claude/Harness must discover ${requiredSkill} as a top-level skill`,
-          );
-        }
-      }
 
       // No router dir should contain a skills/ subdirectory (nesting must not have been applied)
       const routerDirsPresent = topLevel.filter((n) => n.startsWith('gsd-ns-'));
