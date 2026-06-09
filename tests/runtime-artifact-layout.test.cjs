@@ -417,7 +417,7 @@ describe('stage — skills kind (claude global)', () => {
     assert.ok(entries.length >= 1, 'at least one skill dir should be staged');
   });
 
-  test('stage with skills="*" nests all commands/gsd/*.md under 6 routers (claude)', () => {
+  test('stage with skills="*" stages all commands/gsd/*.md as flat skills (claude)', () => {
     const layout = resolveRuntimeArtifactLayout('claude', FAKE_STAGE_DIR, 'global');
     const skillsKind = layout.kinds.find(k => k.kind === 'skills');
     assert.ok(skillsKind, 'should have a skills kind');
@@ -425,18 +425,12 @@ describe('stage — skills kind (claude global)', () => {
     const stagedDir = skillsKind.stage(PROFILE_FULL);
     assert.ok(fs.existsSync(stagedDir), 'stagedDir must exist');
 
-    // Claude is a NESTING runtime: full profile produces exactly 6 gsd-ns-* router dirs.
     const topEntries = fs.readdirSync(stagedDir);
-    assert.strictEqual(topEntries.length, 6, `full profile should have exactly 6 router dirs, got ${topEntries.length}`);
+    assert.ok(topEntries.length >= 60, `full profile should have >= 60 flat skill dirs, got ${topEntries.length}`);
     for (const entry of topEntries) {
-      assert.ok(entry.startsWith('gsd-ns-'), `top-level entry should be a gsd-ns-* router: ${entry}`);
-      // Each router has its own SKILL.md.
-      const routerSkillMd = path.join(stagedDir, entry, 'SKILL.md');
-      assert.ok(fs.existsSync(routerSkillMd), `router SKILL.md must exist in ${entry}`);
-      // Each router has a skills/ subdirectory with nested children.
-      const skillsSubdir = path.join(stagedDir, entry, 'skills');
-      assert.ok(fs.existsSync(skillsSubdir), `skills/ subdir must exist in ${entry}`);
-      assert.ok(fs.statSync(skillsSubdir).isDirectory(), `${entry}/skills must be a directory`);
+      assert.ok(entry.startsWith('gsd-'), `top-level entry should be a gsd-* skill: ${entry}`);
+      const skillMd = path.join(stagedDir, entry, 'SKILL.md');
+      assert.ok(fs.existsSync(skillMd), `SKILL.md must exist in ${entry}`);
     }
 
     // Total SKILL.md files across all routers + nested children must be large (proves no skill was dropped).
@@ -450,7 +444,7 @@ describe('stage — skills kind (claude global)', () => {
       return count;
     }
     const totalSkillMd = countSkillMdFiles(stagedDir);
-    assert.ok(totalSkillMd >= 60, `full profile should have >= 60 total SKILL.md files (routers + children), got ${totalSkillMd}`);
+    assert.strictEqual(totalSkillMd, topEntries.length, 'Claude flat layout should have one SKILL.md per top-level skill dir');
   });
 });
 
