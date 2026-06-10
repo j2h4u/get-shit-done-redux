@@ -38,6 +38,12 @@ const {
   readBaseRefFromSettings,
 } = require('../gsd-core/bin/lib/worktree-base-ref.cjs');
 const { resolveRuntimeConfigIntent } = require('../gsd-core/bin/lib/runtime-config-adapter-registry.cjs');
+// Canonical set of hook files shipped to users. Imported here so writeManifest()
+// records exactly the same set that build-hooks.js copies to hooks/dist/, making
+// the manifest and the installed hooks/ dir structurally identical. Avoids the
+// prefix/extension-regex approach that missed managed-hooks-registry.cjs (#941).
+const { HOOKS_TO_COPY: _HOOKS_TO_COPY } = require('../scripts/build-hooks.js');
+const INSTALLED_HOOK_FILES = new Set(_HOOKS_TO_COPY);
 
 /**
  * Runtimes that register hyphen-form `name:` per #2808 AND copy agent bodies
@@ -324,6 +330,13 @@ const {
   stageAgentsForProfile,
   stageSkillsForRuntimeAsSkills,
 } = require(path.join(_gsdLibDir, 'install-profiles.cjs'));
+// ADR-857 phase 4c: load capability registry (optional; missing → falls back to undefined)
+let _capabilityRegistry;
+try {
+  _capabilityRegistry = require(path.join(_gsdLibDir, 'capability-registry.cjs'));
+} catch (_) {
+  _capabilityRegistry = undefined;
+}
 const {
   applyInstallerMigrationPlan,
   discoverInstallerMigrations,
@@ -3450,7 +3463,13 @@ Execute mode fallback:
 ## C. Task() → spawn_agent Mapping
 GSD workflows use \`Task(...)\` (Claude Code syntax). Translate to Codex collaboration tools:
 
-Direct mapping:
+**Schema detection (required first step):** Codex exposes two \`spawn_agent\` schemas:
+- **agent_type-capable schema** (e.g. \`multi_agent_v2\`): \`spawn_agent\` accepts \`agent_type\`, \`message\`, \`reasoning_effort\`, \`fork_context\`, etc. — typed GSD agent dispatch is available.
+- **Generic schema** (\`multi_agent_v1\`): \`spawn_agent\` accepts only \`message\`, \`items\`, \`fork_context\` — there is **no \`agent_type\` field**. Typed GSD agent dispatch is unavailable in this session.
+
+Before spawning, inspect the \`spawn_agent\` tool's visible parameter schema (via \`tool_search\` or the tool list) to determine which form is active.
+
+Typed mapping (agent_type-capable schema only):
 - \`Task(subagent_type="X", prompt="Y")\` → \`spawn_agent(agent_type="X", message="Y")\`
 - \`Agent(subagent_type="X", prompt="Y")\` → \`spawn_agent(agent_type="X", message="Y")\`
 - \`Task(model="...")\` → omit. \`spawn_agent\` has no inline \`model\` parameter;
@@ -3466,6 +3485,24 @@ Direct mapping:
   Codex \`spawn_agent\` does not create or bind a git worktree automatically.
   Workflows that require this isolation must fail closed or use an explicit
   manual worktree protocol before spawning (#3360).
+
+Generic-agent workaround (multi_agent_v1 schema — NO agent_type field):
+When only the generic \`multi_agent_v1\` schema is available, typed GSD agent dispatch
+(\`gsd-planner\`, \`gsd-executor\`, etc.) is NOT possible. This is a known Codex limitation
+(openai/codex#15250). **This workaround is NOT equivalent to typed gsd-planner/gsd-executor
+execution** — GSD agents carry project-aware prompts, audit logging, and workflow context
+that a generic subagent lacks. Use the following fallback:
+1. Resolve your active Codex config root — the directory that contains your \`config.toml\`.
+   This directory is determined in priority order: \`$CODEX_HOME\` (if set), the path given
+   by \`--config-dir\` (if passed on invocation), a local \`.codex\` directory in the current
+   project (if \`--local\` was used), or the default global config directory. Read
+   \`agents/<agent-name>.toml\` relative to that config root to extract the agent's system
+   instructions.
+2. Inject those instructions as a role-preamble into a generic \`spawn_agent(message=...)\` call.
+3. Label results and logs clearly as "generic-agent workaround" so the orchestrator and user
+   know full typed-agent guarantees are not in effect.
+4. Where typed dispatch is mandatory for correctness (e.g. worktree isolation), fail closed
+   and report the schema limitation rather than silently degrading.
 
 Spawn restriction:
 - Codex restricts \`spawn_agent\` to cases where the user has explicitly
@@ -7754,8 +7791,9 @@ function _copyStaged(stagedDir, destDir, kind) {
 
 /**
  * Remove GSD-prefixed entries from destDir matching kind.prefix.
- * For Hermes nested case (prefix === ''): the destSubpath IS the namespace
- * (skills/gsd) — remove the entire destDir.
+ * For the prefix='' case: the destSubpath IS the namespace — remove the entire
+ * destDir. (No current runtime uses prefix='' after #947 reversed Hermes; kept
+ * as a defensive guard for future runtimes.)
  */
 function _removeGsdEntries(destDir, kind) {
   if (!fs.existsSync(destDir)) return;
@@ -7827,20 +7865,11 @@ function _runLegacyInstallMigrations(runtime, configDir, scope = 'global') {
       }
     }
 
-    // Hermes: remove intermediate-layout skills/gsd/gsd-*/ entries that existed
-    // between #2841 and #3664. Phase 2 (#3664) uses prefix='' producing bare-stem
-    // names (skills/gsd/<stem>/SKILL.md); the intermediate layout had the gsd-
-    // prefix inside the nested dir (skills/gsd/gsd-<stem>/SKILL.md). Only
-    // children whose name starts with gsd- are removed — the parent skills/gsd/
-    // directory and any non-gsd- siblings (user content) are preserved.
-    const nestedGsdDir = path.join(configDir, 'skills', 'gsd');
-    if (fs.existsSync(nestedGsdDir)) {
-      for (const entry of fs.readdirSync(nestedGsdDir, { withFileTypes: true })) {
-        if (entry.isDirectory() && entry.name.startsWith('gsd-')) {
-          fs.rmSync(path.join(nestedGsdDir, entry.name), { recursive: true });
-        }
-      }
-    }
+    // Hermes: bare-stem skills/gsd/<stem>/ cleanup is deferred to AFTER the
+    // layout-driven install loop in installRuntimeArtifacts, where the exact set
+    // of staged gsd-<stem>/ dirs is known. Removing here (before staging) would
+    // require readGsdCommandNames() which misses skills like 'dev-preferences'
+    // that are not in the commands directory. See _removeHermesBareStemDirs().
   }
 
   // Migrate dev-preferences.md content → runtime-aware SKILL.md location (#2973).
@@ -7897,6 +7926,18 @@ function _runLegacyUninstallCleanup(runtime, configDir, scope = 'global') {
         }
       }
     }
+
+    // Hermes: pre-#947 bare-stem skills/gsd/<stem>/ entries (dirs that do NOT
+    // start with 'gsd-') — the #3664 layout used prefix='' so GSD-owned skills
+    // had bare names (e.g. skills/gsd/help/). These are stale on uninstall.
+    const nestedGsdDirForUninstall = path.join(configDir, 'skills', 'gsd');
+    if (fs.existsSync(nestedGsdDirForUninstall)) {
+      for (const entry of fs.readdirSync(nestedGsdDirForUninstall, { withFileTypes: true })) {
+        if (entry.isDirectory() && !entry.name.startsWith('gsd-')) {
+          fs.rmSync(path.join(nestedGsdDirForUninstall, entry.name), { recursive: true });
+        }
+      }
+    }
   }
 
   // Return saved artifacts so the caller can migrate after layout-driven removal.
@@ -7947,6 +7988,43 @@ function _restoreDir(dir, snapshot) {
   }
 }
 
+/**
+ * After the layout-driven install loop writes new gsd-<stem>/ dirs to
+ * skills/gsd/, remove any pre-existing bare-stem dirs (skills/gsd/<stem>/)
+ * that correspond to the newly installed gsd-<stem> entries.
+ *
+ * The removal set is derived from the ACTUAL installed skill dirs (every
+ * entry starting with 'gsd-' that is a directory), so it covers ALL shipped
+ * GSD skills — including 'dev-preferences' and future additions — without
+ * relying on readGsdCommandNames() which only enumerates the commands source
+ * tree and can miss skills that ship outside that directory.
+ *
+ * Safety: a bare dir is ONLY removed when a corresponding gsd-<stem>/ dir was
+ * installed this run. A user-owned dir 'skills/gsd/my-workflow/' that has no
+ * matching 'skills/gsd/gsd-my-workflow/' is never touched.
+ *
+ * @param {string} nestedGsdDir  absolute path to skills/gsd/ category dir
+ */
+function _removeHermesBareStemDirs(nestedGsdDir) {
+  if (!fs.existsSync(nestedGsdDir)) return;
+  const entries = fs.readdirSync(nestedGsdDir, { withFileTypes: true });
+
+  // Collect the set of stems that were installed as gsd-<stem>/ this run.
+  const installedStems = new Set();
+  for (const entry of entries) {
+    if (entry.isDirectory() && entry.name.startsWith('gsd-')) {
+      installedStems.add(entry.name.slice('gsd-'.length)); // e.g. 'quick', 'dev-preferences'
+    }
+  }
+
+  // Remove any bare <stem>/ dir for which gsd-<stem>/ was just installed.
+  for (const entry of entries) {
+    if (entry.isDirectory() && !entry.name.startsWith('gsd-') && installedStems.has(entry.name)) {
+      fs.rmSync(path.join(nestedGsdDir, entry.name), { recursive: true });
+    }
+  }
+}
+
 function installRuntimeArtifacts(runtime, configDir, scope, resolvedProfile) {
   // Legacy cleanup before layout-driven writes
   _runLegacyInstallMigrations(runtime, configDir, scope);
@@ -7987,29 +8065,15 @@ function installRuntimeArtifacts(runtime, configDir, scope, resolvedProfile) {
         // then restore after. This preserves user dirs across a wipe-and-replace
         // install (#2973 / #3664).
         //
-        // For prefix='' (Hermes): _removeGsdEntries wipes the entire dest dir (skills/gsd/).
-        // Preserve every subdir that is NOT in the staged set — those are user-added dirs
-        // (e.g. user-content/) that GSD does not manage.
-        //
-        // For prefix='gsd-' (others): _removeGsdEntries removes only gsd-* entries.
-        // Non-gsd-* user dirs (e.g. my-custom-skill/) are untouched. Only preserve the
-        // explicit user-owned GSD-prefixed skill gsd-dev-preferences, which GSD does not
-        // reinstall from source but must survive the prune (#2973).
+        // All runtimes (incl. Hermes after #947) use prefix='gsd-'.
+        // _removeGsdEntries removes only gsd-* entries; non-gsd-* user dirs are
+        // untouched. Preserve the explicit user-owned GSD-prefixed skill
+        // gsd-dev-preferences, which GSD does not reinstall from source but must
+        // survive the prune (#2973).
         const toPreserve = new Map(); // dirName -> Map<relPath, Buffer>
 
-        if (kind.prefix === '') {
-          // Hermes: wipes entire dest dir — preserve anything not in staged.
-          const stagedNames = fs.existsSync(stagedForCopy)
-            ? new Set(fs.readdirSync(stagedForCopy, { withFileTypes: true })
-                .filter(e => e.isDirectory()).map(e => e.name))
-            : new Set();
-          for (const entry of fs.readdirSync(dest, { withFileTypes: true })) {
-            if (!entry.isDirectory() || stagedNames.has(entry.name)) continue;
-            const snap = _snapshotDir(path.join(dest, entry.name));
-            if (snap.size > 0) toPreserve.set(entry.name, snap);
-          }
-        } else {
-          // Non-Hermes: only preserve explicitly user-owned GSD-prefixed skill dirs.
+        {
+          // Preserve explicitly user-owned GSD-prefixed skill dirs.
           // gsd-dev-preferences is the sole user-customisable skill in this category.
           const USER_OWNED_SKILL_DIRS = ['gsd-dev-preferences'];
           for (const dirName of USER_OWNED_SKILL_DIRS) {
@@ -8038,6 +8102,21 @@ function installRuntimeArtifacts(runtime, configDir, scope, resolvedProfile) {
         try { fs.rmSync(tempToClean, { recursive: true, force: true }); } catch { /* best-effort */ }
       }
     }
+  }
+
+  // Hermes: after the install loop has written all gsd-<stem>/ dirs to
+  // skills/gsd/, remove any stale bare-stem dirs (skills/gsd/<stem>/) that
+  // correspond to the newly installed gsd-<stem> entries. This is the robust
+  // replacement for the readGsdCommandNames()-based pre-install cleanup that
+  // missed skills like 'dev-preferences' (#947 adversarial review).
+  //
+  // We run this AFTER the install loop so the installed set is authoritative:
+  // every gsd-<stem>/ present now was written this run (or was there before
+  // with the same prefix). User-owned bare dirs with no gsd-<stem> counterpart
+  // are untouched.
+  if (runtime === 'hermes') {
+    const nestedGsdDirForCleanup = path.join(configDir, 'skills', 'gsd');
+    _removeHermesBareStemDirs(nestedGsdDirForCleanup);
   }
 }
 
@@ -8142,6 +8221,23 @@ function uninstallRuntimeArtifacts(runtime, configDir, scope) {
   for (const kind of layout.kinds) {
     const dest = path.join(layout.configDir, kind.destSubpath);
     _removeGsdEntries(dest, kind);
+  }
+
+  // Hermes: after removing gsd-* skill dirs from skills/gsd/, also remove
+  // the GSD-managed DESCRIPTION.md and then the category dir itself if it
+  // contains no user content (#947). _removeGsdEntries removed gsd-* dirs
+  // but left the category container and DESCRIPTION.md intact.
+  if (runtime === 'hermes') {
+    const nestedGsdDir = path.join(configDir, 'skills', 'gsd');
+    if (fs.existsSync(nestedGsdDir)) {
+      // Remove GSD-owned DESCRIPTION.md (written by writeHermesCategoryDescription)
+      fs.rmSync(path.join(nestedGsdDir, 'DESCRIPTION.md'), { force: true });
+      // Remove the category dir if empty (no user content remaining)
+      const remaining = fs.readdirSync(nestedGsdDir, { withFileTypes: true });
+      if (remaining.length === 0) {
+        fs.rmSync(nestedGsdDir, { recursive: true, force: true });
+      }
+    }
   }
 
   // #2973 / Codex review (bd1f06c9): migrate dev-preferences.md to the
@@ -9569,8 +9665,8 @@ function writeManifest(configDir, runtime = 'claude', options = {}) {
     }
   }
   if ((isCodex || isCopilot || isAntigravity || isCursor || isWindsurf || isTrae || (!isOpencode && !isGemini)) && fs.existsSync(codexSkillsDir)) {
-    // Hermes uses prefix '' (bare stem names); all others use 'gsd-'
-    const skillListPrefix = isHermes ? '' : 'gsd-';
+    // All runtimes (including Hermes post-#947) use the canonical 'gsd-' prefix.
+    const skillListPrefix = 'gsd-';
     for (const skillName of listCodexSkillNames(codexSkillsDir, skillListPrefix)) {
       const skillRoot = path.join(codexSkillsDir, skillName);
       const skillHashes = generateManifest(skillRoot);
@@ -9619,9 +9715,17 @@ function writeManifest(configDir, runtime = 'claude', options = {}) {
   if (!isCodex && !isCopilot && !isCline && !isKimi) {
     const hooksDir = path.join(configDir, 'hooks');
     if (fs.existsSync(hooksDir)) {
-      for (const file of fs.readdirSync(hooksDir)) {
-        if (file.startsWith('gsd-') && (file.endsWith('.js') || file.endsWith('.sh'))) {
-          manifest.files['hooks/' + file] = fileHash(path.join(hooksDir, file));
+      // Drive from INSTALLED_HOOK_FILES (the canonical HOOKS_TO_COPY set from
+      // scripts/build-hooks.js) rather than a prefix/extension regex, so the
+      // manifest set is structurally identical to the build set. The old regex
+      // `file.startsWith('gsd-') && (file.endsWith('.js') || file.endsWith('.sh'))`
+      // missed managed-hooks-registry.cjs (wrong prefix, .cjs extension), causing
+      // detect-custom-files to flag it as a perpetual false-positive custom file
+      // on every /gsd-update. See #941.
+      for (const hook of INSTALLED_HOOK_FILES) {
+        const hookPath = path.join(hooksDir, hook);
+        if (fs.existsSync(hookPath)) {
+          manifest.files['hooks/' + hook] = fileHash(hookPath);
         }
       }
       // Track hooks/lib/ helpers so saveLocalPatches() can back up user edits
@@ -10071,7 +10175,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
   // @-references resolve correctly (#2376 Windows, #2831 macOS/Linux).
   // gsd update marker re-application (ADR-0010 Deviation 2):
   // Resolve which profile to use for this runtime's install:
-  //   1. --minimal / --core-only → back-compat path (stageSkillsForMode keeps strict core allowlist)
+  //   1. --minimal / --core-only → back-compat alias for the core profile
   //   2. Explicit --profile=<name> → use it (overrides any marker)
   //   3. Marker exists in targetDir → honor it (prevents silent expansion on update)
   //   4. Else → 'full' (back-compat for fresh non-interactive installs)
@@ -10080,8 +10184,16 @@ function install(isGlobal, runtime = 'claude', options = {}) {
   // differ, the caller may use mostRestrictiveProfile() across the per-runtime
   // results — here we resolve each runtime independently.
   //
-  // Note: --minimal uses stageSkillsForMode (back-compat: strict allowlist, no closure).
-  // Named profiles (--profile=X or marker-driven) use resolveProfile() for transitive closure.
+  // ADR-857 phase 4c: ALL profiles (including core/minimal) use stageSkillsForProfile
+  // with the registry-aware _resolvedProfile so future tier:core capabilities are
+  // staged on core installs.  The 'minimal' back-compat distinction is now ONLY the
+  // empty manifest (core profile has no transitive deps); the registry IS consulted.
+  // MINIMAL is intentionally the same skill set as the 'core' profile
+  // (MINIMAL_ALLOWLIST_SET === Set(PROFILES.core)) — it is NOT a separately curated
+  // subset.  Any future tier:core capability therefore DOES belong in a minimal/core
+  // install.  Using stageSkillsForProfile(_resolvedProfile) honors the registry while
+  // keeping the effective skill set identical to the prior stageSkillsForMode path
+  // until a tier:core capability is registered.
   const _activeProfileName = hasMinimal
     ? 'core'  // --minimal is a back-compat alias for the core profile; marker records 'core'
     : resolveEffectiveProfile({
@@ -10092,19 +10204,18 @@ function install(isGlobal, runtime = 'claude', options = {}) {
   const _effectiveInstallMode = _isCoreProfileAlias ? 'minimal' : 'full';
   // Load the manifest and compute resolved profile for named profiles.
   // For --minimal/core: use an empty manifest (core profile has no transitive
-  // deps) to produce a resolvedProfile with the core skill set. This allows
-  // installRuntimeArtifacts to use stageSkillsForProfile uniformly across all
-  // profile modes without a null sentinel.
+  // deps) to produce a resolvedProfile with the core skill set.  Registry IS
+  // consulted so tier:core capability skills are included when registered.
   const _commandsDir = path.join(src, 'commands', 'gsd');
   const _skillsManifest = _isCoreProfileAlias ? new Map() : loadSkillsManifest(_commandsDir);
   const _resolvedProfile = resolveProfile({
     modes: [_activeProfileName],
     manifest: _skillsManifest,
+    registry: _capabilityRegistry,
   });
-  // Unified staging function: for --minimal uses stageSkillsForMode (back-compat);
-  // for named profiles uses stageSkillsForProfile (new API with transitive closure).
+  // Unified staging function: all profiles use stageSkillsForProfile with the
+  // registry-aware _resolvedProfile (ADR-857 phase 4c cutover).
   function _stageSkills(commandsGsdDir) {
-    if (_isCoreProfileAlias) return stageSkillsForMode(commandsGsdDir, _effectiveInstallMode);
     return stageSkillsForProfile(commandsGsdDir, _resolvedProfile);
   }
   function _stageAgents(agentsDir) {
@@ -10461,9 +10572,9 @@ function install(isGlobal, runtime = 'claude', options = {}) {
     if (isHermes) {
       const hermesSkillsDir = path.join(targetDir, 'skills', 'gsd');
       if (fs.existsSync(hermesSkillsDir)) {
-        // Hermes layout uses prefix: '' — skill dirs have bare stem names (no gsd- prefix)
+        // Hermes layout uses prefix: 'gsd-' (#947) — skill dirs have gsd-<stem> names
         const count = fs.readdirSync(hermesSkillsDir, { withFileTypes: true })
-          .filter(e => e.isDirectory()).length;
+          .filter(e => e.isDirectory() && e.name.startsWith('gsd-')).length;
         if (count > 0) {
           console.log(`  ${green}✓${reset} Installed ${count} skills to skills/gsd/`);
         } else {
