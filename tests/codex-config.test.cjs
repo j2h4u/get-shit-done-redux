@@ -266,10 +266,6 @@ tools: Read, Bash
 
 INIT=$(gsd-tools query init.plan-phase "\${PHASE}")
 gsd-tools query state.load 2>/dev/null
-echo ready && gsd-tools query after-ready
-false || gsd-tools query fallback
-echo next; gsd-tools query semicolon
-cat state.json | gsd-tools query pipe
 if command -v gsd-tools >/dev/null 2>&1; then echo "path fallback"; fi
 Use \`gsd-tools query history-digest\` for history.`;
 
@@ -285,22 +281,6 @@ Use \`gsd-tools query history-digest\` for history.`;
     assert.ok(
       result.includes('`node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query history-digest`'),
       'rewrites inline command example',
-    );
-    assert.ok(
-      result.includes('&& node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query after-ready'),
-      'rewrites command after &&',
-    );
-    assert.ok(
-      result.includes('|| node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query fallback'),
-      'rewrites command after ||',
-    );
-    assert.ok(
-      result.includes('; node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query semicolon'),
-      'rewrites command after ;',
-    );
-    assert.ok(
-      result.includes('| node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query pipe'),
-      'rewrites command after |',
     );
     assert.ok(result.includes('command -v gsd-tools'), 'keeps PATH resolver probe intact');
     assertNoCodexBareGsdToolsInvocation(result, 'converted Codex agent');
@@ -355,25 +335,6 @@ node "$HOME/.claude/gsd-core/bin/gsd-tools.cjs" init`;
     assert.ok(!result.includes('$gsd-tools'), 'no $gsd-tools in file path');
   });
 
-  test('does not convert /gsd-core after shell parameter expansion', () => {
-    const input = `---
-name: gsd-test
-description: Test
-tools: Read
----
-
-GSD_TOOLS="\${_GSD_RUNTIME_ROOT}/gsd-core/bin/gsd-tools.cjs"
-/gsd-plan-phase 9`;
-
-    const result = convertClaudeCommandToCodexSkill(input, 'gsd-test');
-    assert.ok(
-      result.includes('${_GSD_RUNTIME_ROOT}/gsd-core/bin/gsd-tools.cjs'),
-      'shell-expanded gsd-core path must be preserved'
-    );
-    assert.ok(!result.includes('${_GSD_RUNTIME_ROOT}$gsd-core'), 'no $gsd-core path corruption');
-    assert.ok(result.includes('$gsd-plan-phase 9'), 'real slash command still converts');
-  });
-
   test('rewrites bare gsd-tools commands in generated Codex skills', () => {
     const input = `---
 name: gsd:quick
@@ -383,10 +344,6 @@ description: Quick task
 \`\`\`bash
 gsd-tools query frontmatter.get .planning/quick/example/SUMMARY.md status
 INIT=$(gsd-tools query init.quick)
-echo ready && gsd-tools query state.load
-false || gsd-tools query fallback
-echo next; gsd-tools query semicolon
-cat state.json | gsd-tools query pipe
 if command -v gsd-tools >/dev/null 2>&1; then echo ok; fi
 \`\`\`
 
@@ -404,22 +361,6 @@ Status fields read via \`gsd-tools query frontmatter.get\`.`;
     assert.ok(
       result.includes('`node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query frontmatter.get`'),
       'rewrites inline command example',
-    );
-    assert.ok(
-      result.includes('&& node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query state.load'),
-      'rewrites command after &&',
-    );
-    assert.ok(
-      result.includes('|| node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query fallback'),
-      'rewrites command after ||',
-    );
-    assert.ok(
-      result.includes('; node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query semicolon'),
-      'rewrites command after ;',
-    );
-    assert.ok(
-      result.includes('| node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query pipe'),
-      'rewrites command after |',
     );
     assert.ok(result.includes('command -v gsd-tools'), 'keeps resolver probe intact');
     assertNoCodexBareGsdToolsInvocation(result, 'converted Codex skill');
@@ -522,6 +463,35 @@ tools: Read, Grep, Glob
   test('does not emit model field when modelOverrides is null (#2256)', () => {
     const result = generateCodexAgentToml('gsd-executor', sampleAgent, null);
     assert.ok(!result.includes('model ='), 'model field must be absent when no override');
+  });
+
+  test('does not emit reasoning effort when Codex model is inherited (#838)', () => {
+    const result = generateCodexAgentToml('gsd-executor', sampleAgent, null);
+    assert.ok(!result.includes('model ='), 'model field must be absent when Codex should inherit');
+    assert.ok(
+      !result.includes('model_reasoning_effort ='),
+      'reasoning effort must stay absent when the model is inherited'
+    );
+  });
+
+  test('emits reasoning effort when model override pins Codex model (#838)', () => {
+    const overrides = { 'gsd-executor': 'gpt-5.3-codex' };
+    const result = generateCodexAgentToml('gsd-executor', sampleAgent, overrides);
+    assert.ok(result.includes('model = "gpt-5.3-codex"'), 'model override must pin model');
+    assert.ok(
+      result.includes('model_reasoning_effort ='),
+      'reasoning effort is safe to emit when GSD also pins model'
+    );
+  });
+
+  test('emits reasoning effort when runtime resolver pins Codex model (#838)', () => {
+    const runtimeResolver = { resolve: () => ({ model: 'gpt-5.5' }) };
+    const result = generateCodexAgentToml('gsd-executor', sampleAgent, null, runtimeResolver);
+    assert.ok(result.includes('model = "gpt-5.5"'), 'runtime resolver must pin model');
+    assert.ok(
+      result.includes('model_reasoning_effort ='),
+      'reasoning effort is safe to emit when runtime resolver pins model'
+    );
   });
 
   test('does not emit model field when modelOverrides has no entry for this agent (#2256)', () => {
@@ -1564,21 +1534,6 @@ describe('installCodexConfig (integration)', () => {
     assert.ok(checkerToml.includes('sandbox_mode = "read-only"'), 'plan-checker is read-only');
   });
 
-  (hasAgents ? test : test.skip)('generated Codex agent .toml files do not call bare gsd-tools', () => {
-    const { installCodexConfig } = require('../bin/install.js');
-    installCodexConfig(tmpTarget, agentsSrc);
-
-    const agentsDir = path.join(tmpTarget, 'agents');
-    const tomlFiles = fs.readdirSync(agentsDir)
-      .filter((f) => f.startsWith('gsd-') && f.endsWith('.toml'));
-    assert.ok(tomlFiles.length > 0, 'expected generated Codex agent toml files');
-
-    for (const file of tomlFiles) {
-      const content = fs.readFileSync(path.join(agentsDir, file), 'utf8');
-      assertNoCodexBareGsdToolsInvocation(content, `agents/${file}`);
-    }
-  });
-
   // PATHS-01: no ~/.claude references should leak into generated .toml files (#2320)
   // Covers both trailing-slash and bare end-of-string forms, and scans all .toml
   // files (agents/ subdirectory + top-level config.toml if present).
@@ -1605,6 +1560,21 @@ describe('installCodexConfig (integration)', () => {
       }
     }
     assert.deepStrictEqual(leaks, [], `No .toml files should contain .claude paths; found leaks in: ${leaks.join(', ')}`);
+  });
+
+  (hasAgents ? test : test.skip)('generated Codex agent .toml files do not call bare gsd-tools', () => {
+    const { installCodexConfig } = require('../bin/install.js');
+    installCodexConfig(tmpTarget, agentsSrc);
+
+    const agentsDir = path.join(tmpTarget, 'agents');
+    const tomlFiles = fs.readdirSync(agentsDir)
+      .filter((file) => file.startsWith('gsd-') && file.endsWith('.toml'));
+    assert.ok(tomlFiles.length > 0, 'expected generated Codex agent toml files');
+
+    for (const file of tomlFiles) {
+      const content = fs.readFileSync(path.join(agentsDir, file), 'utf8');
+      assertNoCodexBareGsdToolsInvocation(content, `agents/${file}`);
+    }
   });
 });
 

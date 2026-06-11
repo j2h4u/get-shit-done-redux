@@ -17,6 +17,8 @@
  * (F) Regression locks: the snippet file contains no /gsd-tools substring; and
  *     no line in workflows/do.md matches /\/gsd[:-][a-z]/ (dispatcher-parity
  *     scanner must not read the preamble as a slash-command stub).
+ * (H) Codex shim fallback: when PATH has no gsd-tools, $HOME/.codex/gsd-core/bin
+ *     can satisfy gsd_run for Codex shim-only installs.
  */
 
 // allow-test-rule: structural parity/drift guard — asserts literal presence/absence of the canonical gsd_run launcher and the retired $GSD_SDK / `/gsd-tools` tokens across workflow markdown; there is no typed IR for "this source file does not contain substring X".
@@ -448,24 +450,21 @@ describe('runtime-launcher-parity (#373)', () => {
       const scriptPath = path.join(fakeRuntime, 'test-codex-home-fb.sh');
       fs.writeFileSync(scriptPath, scriptContent);
 
-      const nodeBin = execFileSync('which', ['node'], { encoding: 'utf8' }).trim();
+      const hasExecutable = (dir, name) => {
+        try {
+          fs.accessSync(path.join(dir, name), fs.constants.X_OK);
+          return true;
+        } catch {
+          return false;
+        }
+      };
       const systemPaths = (process.env.PATH || '/usr/bin:/bin')
         .split(path.delimiter)
-        .filter((p) => {
-          try {
-            fs.accessSync(path.join(p, 'gsd-tools'), fs.constants.X_OK);
-            return false;
-          } catch {
-            return true;
-          }
-        });
-      if (!systemPaths.some((p) => {
-        try { fs.accessSync(path.join(p, 'node'), fs.constants.X_OK); return true; }
-        catch { return false; }
-      })) {
+        .filter((p) => !hasExecutable(p, 'gsd-tools'));
+      if (!systemPaths.some((p) => hasExecutable(p, 'node'))) {
         const nodeShimDir = path.join(fakeRuntime, 'node-shim');
         fs.mkdirSync(nodeShimDir, { recursive: true });
-        fs.symlinkSync(nodeBin, path.join(nodeShimDir, 'node'));
+        fs.symlinkSync(process.execPath, path.join(nodeShimDir, 'node'));
         systemPaths.unshift(nodeShimDir);
       }
 

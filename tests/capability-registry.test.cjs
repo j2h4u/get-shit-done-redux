@@ -100,6 +100,18 @@ describe('UI pilot capability', () => {
     assert.ok(uiPhaseStep, 'plan:pre.steps should contain the ui-phase step');
     assert.strictEqual(uiPhaseStep.capId, 'ui');
 
+    // byLoopPoint['plan:pre'].gates contains the new ui.plan-gate (#1026)
+    const planPreGates = registry.byLoopPoint['plan:pre'].gates;
+    assert.ok(Array.isArray(planPreGates), 'plan:pre.gates should be an array');
+    const uiPlanGate = planPreGates.find(
+      (g) => g.check && g.check.query === 'ui.plan-gate',
+    );
+    assert.ok(uiPlanGate, 'plan:pre.gates should contain the ui.plan-gate (#1026)');
+    assert.strictEqual(uiPlanGate.capId, 'ui');
+    assert.strictEqual(uiPlanGate.blocking, true);
+    assert.strictEqual(uiPlanGate.when, 'workflow.ui_safety_gate');
+    assert.strictEqual(uiPlanGate.onError, 'halt');
+
     // byLoopPoint['execute:wave:post'].gates contains the UI safety gate
     const execWavePostGates = registry.byLoopPoint['execute:wave:post'].gates;
     assert.ok(Array.isArray(execWavePostGates), 'execute:wave:post.gates should be an array');
@@ -724,6 +736,169 @@ describe('Fix #4: step.ref must be exclusive skill XOR agent', () => {
     };
     const refErrors = validateCapability(cap, 'ui').filter((e) => e.includes('ref'));
     assert.deepEqual(refErrors, [], 'No ref errors expected for agent-only ref, got: ' + JSON.stringify(refErrors));
+  });
+});
+
+describe('double-prefix guard: step.ref.skill must not start with "gsd-"', () => {
+  // ref.skill is an unprefixed stem (e.g. "ui-review"). Workflow dispatch prepends
+  // "gsd-" at runtime. A stem already starting with "gsd-" would produce "gsd-gsd-..."
+  // at dispatch time, silently invoking a non-existent skill.
+
+  test('ref.skill starting with "gsd-" is rejected', () => {
+    const cap = {
+      ...UI_CAP,
+      steps: [
+        {
+          point: 'verify:post',
+          ref: { skill: 'gsd-ui-review' },  // wrong: stem must NOT have gsd- prefix
+          produces: ['UI-REVIEW.md'],
+          consumes: ['UI-SPEC.md'],
+          when: 'workflow.ui_review',
+          onError: 'skip',
+        },
+      ],
+    };
+    const errors = validateCapability(cap, 'ui');
+    assert.ok(errors.length > 0, 'Expected an error for gsd-prefixed ref.skill');
+    assert.ok(
+      errors.some((e) => e.includes('gsd-') && (e.includes('double') || e.includes('unprefixed') || e.includes('must not start'))),
+      'Error should mention the double-prefix problem, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('ref.skill without "gsd-" prefix is accepted (stem only)', () => {
+    const cap = {
+      ...UI_CAP,
+      steps: [
+        {
+          point: 'verify:post',
+          ref: { skill: 'ui-review' },  // correct: unprefixed stem
+          produces: ['UI-REVIEW.md'],
+          consumes: ['UI-SPEC.md'],
+          when: 'workflow.ui_review',
+          onError: 'skip',
+        },
+      ],
+    };
+    const prefixErrors = validateCapability(cap, 'ui').filter((e) => e.includes('gsd-') && e.includes('stem'));
+    assert.deepEqual(prefixErrors, [], 'No prefix errors expected for unprefixed stem, got: ' + JSON.stringify(prefixErrors));
+  });
+
+  test('real UI capability.json uses unprefixed ref.skill values', () => {
+    // Verify the live capability uses unprefixed stems and therefore passes the new guard.
+    const errors = validateCapability(UI_CAP, 'ui');
+    const prefixErrors = errors.filter((e) => e.includes('must not start with'));
+    assert.deepEqual(prefixErrors, [], 'Live UI capability.json should not trigger the double-prefix guard: ' + JSON.stringify(prefixErrors));
+  });
+});
+
+// ─── Fix: ref.skill/ref.agent membership in declared skills/agents ────────────
+
+describe('ref membership check: step.ref.skill must be in cap.skills', () => {
+  // A capability declares skills: ["ui-phase", "ui-review"].
+  // A step with ref.skill "typo-skill" (not in skills) must be rejected.
+
+  test('step.ref.skill NOT in cap.skills is rejected', () => {
+    const cap = {
+      ...UI_CAP,
+      steps: [
+        {
+          point: 'plan:pre',
+          ref: { skill: 'typo-skill' },  // not in skills: ["ui-phase", "ui-review"]
+          produces: ['UI-SPEC.md'],
+          consumes: ['CONTEXT.md'],
+          when: 'workflow.ui_phase',
+          onError: 'skip',
+        },
+      ],
+    };
+    const errors = validateCapability(cap, 'ui');
+    assert.ok(errors.length > 0, 'Expected errors for undeclared ref.skill');
+    assert.ok(
+      errors.some((e) => e.includes('typo-skill') && e.includes('not declared')),
+      'Error should mention "typo-skill" and "not declared", got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('step.ref.skill IN cap.skills is accepted', () => {
+    const cap = {
+      ...UI_CAP,
+      steps: [
+        {
+          point: 'plan:pre',
+          ref: { skill: 'ui-phase' },  // declared in skills: ["ui-phase", "ui-review"]
+          produces: ['UI-SPEC.md'],
+          consumes: ['CONTEXT.md'],
+          when: 'workflow.ui_phase',
+          onError: 'skip',
+        },
+      ],
+    };
+    const errors = validateCapability(cap, 'ui');
+    const membershipErrors = errors.filter((e) => e.includes('not declared') && e.includes('ui-phase'));
+    assert.deepEqual(
+      membershipErrors, [],
+      'No membership errors expected for declared ref.skill, got: ' + JSON.stringify(membershipErrors),
+    );
+  });
+
+  test('real UI capability passes: ui-phase and ui-review are both in skills', () => {
+    // Regression guard: the real UI capability must not trigger the new membership check.
+    const errors = validateCapability(UI_CAP, 'ui');
+    const membershipErrors = errors.filter((e) => e.includes('not declared'));
+    assert.deepEqual(
+      membershipErrors, [],
+      'Real UI capability should pass membership check for all ref.skill values, got: ' + JSON.stringify(membershipErrors),
+    );
+  });
+});
+
+describe('ref membership check: step.ref.agent must be in cap.agents', () => {
+  // A capability declares agents: ["gsd-ui-checker", "gsd-ui-auditor"].
+  // A step with ref.agent "gsd-unknown-agent" (not in agents) must be rejected.
+
+  test('step.ref.agent NOT in cap.agents is rejected', () => {
+    const cap = {
+      ...UI_CAP,
+      steps: [
+        {
+          point: 'plan:pre',
+          ref: { agent: 'gsd-unknown-agent' },  // not in agents: ["gsd-ui-checker", "gsd-ui-auditor"]
+          produces: ['UI-SPEC.md'],
+          consumes: ['CONTEXT.md'],
+          when: 'workflow.ui_phase',
+          onError: 'skip',
+        },
+      ],
+    };
+    const errors = validateCapability(cap, 'ui');
+    assert.ok(errors.length > 0, 'Expected errors for undeclared ref.agent');
+    assert.ok(
+      errors.some((e) => e.includes('gsd-unknown-agent') && e.includes('not declared')),
+      'Error should mention "gsd-unknown-agent" and "not declared", got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('step.ref.agent IN cap.agents is accepted', () => {
+    const cap = {
+      ...UI_CAP,
+      steps: [
+        {
+          point: 'plan:pre',
+          ref: { agent: 'gsd-ui-checker' },  // declared in agents
+          produces: ['UI-SPEC.md'],
+          consumes: ['CONTEXT.md'],
+          when: 'workflow.ui_phase',
+          onError: 'skip',
+        },
+      ],
+    };
+    const errors = validateCapability(cap, 'ui');
+    const membershipErrors = errors.filter((e) => e.includes('not declared') && e.includes('gsd-ui-checker'));
+    assert.deepEqual(
+      membershipErrors, [],
+      'No membership errors expected for declared ref.agent, got: ' + JSON.stringify(membershipErrors),
+    );
   });
 });
 

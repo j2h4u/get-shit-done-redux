@@ -7,6 +7,91 @@
  */
 
 const capabilities = {
+  "audit": {
+    "id": "audit",
+    "role": "feature",
+    "title": "Audit",
+    "description": "Open-artifact audit and UAT-gap audit for milestone close gates; exposes `gsd-tools audit-uat` (cross-phase UAT outstanding items) and `gsd-tools audit-open` (structured open-artifact scan across debug, tasks, threads, todos, seeds, UAT, verification, context-questions).",
+    "tier": "full",
+    "requires": [],
+    "skills": [],
+    "agents": [],
+    "config": {},
+    "commands": [
+      {
+        "family": "audit-uat",
+        "module": "audit-command-router.cjs",
+        "router": "routeAuditUat"
+      },
+      {
+        "family": "audit-open",
+        "module": "audit-command-router.cjs",
+        "router": "routeAuditOpen"
+      }
+    ],
+    "hooks": [],
+    "steps": [],
+    "contributions": [],
+    "gates": []
+  },
+  "graphify": {
+    "id": "graphify",
+    "role": "feature",
+    "title": "Knowledge graph",
+    "description": "Build, query, and inspect the project knowledge graph in `.planning/graphs/`; exposes graphify CLI subcommands (build, query, status, diff) and the /gsd-graphify skill.",
+    "tier": "full",
+    "requires": [],
+    "skills": [
+      "graphify"
+    ],
+    "agents": [],
+    "config": {
+      "graphify.enabled": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable the graphify knowledge-graph command + skill."
+      }
+    },
+    "commands": [
+      {
+        "family": "graphify",
+        "module": "graphify-command-router.cjs",
+        "router": "routeGraphifyCommand"
+      }
+    ],
+    "hooks": [],
+    "steps": [],
+    "contributions": [],
+    "gates": []
+  },
+  "intel": {
+    "id": "intel",
+    "role": "feature",
+    "title": "Codebase intelligence",
+    "description": "Code-intelligence store for codebase querying, diff, snapshot, and API-surface extraction; exposes `gsd-tools intel` subcommands (query, status, update, diff, snapshot, patch-meta, validate, extract-exports, api-surface) and backs `/gsd-map-codebase` and `gsd-intel-updater`.",
+    "tier": "full",
+    "requires": [],
+    "skills": [],
+    "agents": [],
+    "config": {
+      "intel.enabled": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable the intel code-intelligence command."
+      }
+    },
+    "commands": [
+      {
+        "family": "intel",
+        "module": "intel-command-router.cjs",
+        "router": "routeIntelCommand"
+      }
+    ],
+    "hooks": [],
+    "steps": [],
+    "contributions": [],
+    "gates": []
+  },
   "ui": {
     "id": "ui",
     "role": "feature",
@@ -73,6 +158,15 @@ const capabilities = {
     "contributions": [],
     "gates": [
       {
+        "point": "plan:pre",
+        "check": {
+          "query": "ui.plan-gate"
+        },
+        "when": "workflow.ui_safety_gate",
+        "blocking": true,
+        "onError": "halt"
+      },
+      {
         "point": "execute:wave:post",
         "check": {
           "query": "ui.safety-gate"
@@ -86,6 +180,7 @@ const capabilities = {
 };
 
 const bySkill = {
+  "graphify": "graphify",
   "ui-phase": "ui",
   "ui-review": "ui"
 };
@@ -125,7 +220,18 @@ const byLoopPoint = {
       }
     ],
     "contributions": [],
-    "gates": []
+    "gates": [
+      {
+        "capId": "ui",
+        "point": "plan:pre",
+        "check": {
+          "query": "ui.plan-gate"
+        },
+        "when": "workflow.ui_safety_gate",
+        "blocking": true,
+        "onError": "halt"
+      }
+    ]
   },
   "plan:post": {
     "steps": [],
@@ -202,12 +308,26 @@ const byLoopPoint = {
 };
 
 const configKeys = {
+  "graphify.enabled": "graphify",
+  "intel.enabled": "intel",
   "workflow.ui_phase": "ui",
   "workflow.ui_review": "ui",
   "workflow.ui_safety_gate": "ui"
 };
 
 const configSchema = {
+  "graphify.enabled": {
+    "owner": "graphify",
+    "type": "boolean",
+    "default": false,
+    "description": "Enable the graphify knowledge-graph command + skill."
+  },
+  "intel.enabled": {
+    "owner": "intel",
+    "type": "boolean",
+    "default": false,
+    "description": "Enable the intel code-intelligence command."
+  },
   "workflow.ui_phase": {
     "owner": "ui",
     "type": "boolean",
@@ -230,9 +350,33 @@ const configSchema = {
 
 const runtimes = {};
 
-const commandFamilies = {};
+const commandFamilies = {
+  "audit-open": {
+    "capId": "audit",
+    "module": "audit-command-router.cjs",
+    "router": "routeAuditOpen"
+  },
+  "audit-uat": {
+    "capId": "audit",
+    "module": "audit-command-router.cjs",
+    "router": "routeAuditUat"
+  },
+  "graphify": {
+    "capId": "graphify",
+    "module": "graphify-command-router.cjs",
+    "router": "routeGraphifyCommand"
+  },
+  "intel": {
+    "capId": "intel",
+    "module": "intel-command-router.cjs",
+    "router": "routeIntelCommand"
+  }
+};
 
 const capabilityClusters = {
+  "graphify": [
+    "graphify"
+  ],
   "ui": [
     "ui-phase",
     "ui-review"
@@ -240,6 +384,12 @@ const capabilityClusters = {
 };
 
 const profileMembership = {
+  "graphify": {
+    "tier": "full",
+    "profiles": [
+      "full"
+    ]
+  },
   "ui": {
     "tier": "full",
     "profiles": [
@@ -249,6 +399,9 @@ const profileMembership = {
 };
 
 const _requiresGraph = {
+  "audit": [],
+  "graphify": [],
+  "intel": [],
   "ui": []
 };
 

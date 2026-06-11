@@ -637,8 +637,37 @@ function computePathPrefix({ isGlobal, isOpencode, isWindowsHost: _isWindowsHost
  *
  * Non-Homebrew installs (NVM, system node, Windows, etc.) are returned as-is.
  */
-function normalizeNodePath(execPath) {
+function normalizeNodePath(execPath, opts) {
   if (!execPath) return execPath;
+  const env = (opts && opts.env) || process.env;
+  const existsSync = (opts && opts.existsSync) || fs.existsSync;
+
+  // fnm multishell shim: C:/Users/<u>/AppData/Local/fnm_multishells/<pid>_<ts>/node.exe
+  // These are per-shell-session ephemeral directories that fnm cleans up on shell exit.
+  // Probe the stable fnm alias paths instead so baked hook commands survive shell restarts.
+  // (#977)
+  // TODO: Volta (~/.volta/bin/node → ~/.volta/tools/image/node/<ver>/bin/node) and
+  // nvm-windows (AppData/Roaming/nvm/<ver>/node.exe) have analogous issues — future work.
+  const normalizedForMatch = execPath.replace(/\\/g, '/');
+  if (/\/fnm_multishells\/[0-9]+_[0-9]+\/node(\.exe)?$/i.test(normalizedForMatch)) {
+    const candidates = [];
+    if (env.FNM_DIR) {
+      // Preferred: alias installed directly under FNM_DIR/aliases/default/
+      candidates.push(`${env.FNM_DIR}/aliases/default/node.exe`);
+      // POSIX layout (no .exe)
+      candidates.push(`${env.FNM_DIR}/aliases/default/bin/node`);
+    }
+    if (env.APPDATA) {
+      // Fallback: fnm default location on Windows when FNM_DIR is not set
+      candidates.push(`${env.APPDATA}/fnm/aliases/default/node.exe`);
+    }
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) return candidate;
+    }
+    // No stable alias found — return raw path unchanged (graceful fallback)
+    return execPath;
+  }
+
   // Intel Homebrew: /usr/local/Cellar/node/<version>/bin/node
   // or /usr/local/Cellar/node@20/<version>/bin/node
   if (/^\/usr\/local\/Cellar\/node(@\d+)?\/[^/]+\/bin\/node(\.exe)?$/.test(execPath)) {
@@ -667,11 +696,16 @@ function normalizeNodePath(execPath) {
  *
  * When `process.execPath` is a versioned Homebrew Cellar path, the stable
  * Homebrew symlink is returned instead to survive `brew upgrade node` (#3181).
+ *
+ * When `process.execPath` is an ephemeral fnm multishell shim, the stable fnm
+ * alias path is returned instead so managed hook commands survive shell restarts
+ * (#977). An optional `opts` bag (`{ env, existsSync }`) is accepted for
+ * testability; production callers omit it to get real env / fs.
  */
-function resolveNodeRunner() {
+function resolveNodeRunner(opts) {
   const execPath = typeof process.execPath === 'string' ? process.execPath : '';
   if (!execPath) return null;
-  const stablePath = normalizeNodePath(execPath);
+  const stablePath = normalizeNodePath(execPath, opts);
   // JSON.stringify produces a properly escaped double-quoted shell token,
   // safe for paths containing spaces or unusual characters.
   return JSON.stringify(stablePath.replace(/\\/g, '/'));
@@ -725,6 +759,10 @@ function rewriteLegacyManagedNodeHookCommands(settings, absoluteRunner, opts) {
       if (!entry || !Array.isArray(entry.hooks)) continue;
       for (const h of entry.hooks) {
         if (!h || typeof h.command !== 'string') continue;
+        // args-form entries have the script path in h.args[] and h.command is
+        // the launcher executable (not a managed hook command).  These are
+        // intentional user wrappers — do not rewrite them. (#976)
+        if (Array.isArray(h.args) && h.args.length > 0) continue;
         let trimmed = h.command.trim();
         const hadPowerShellCallOperator = platform === 'win32' && /^&\s+/.test(trimmed);
         if (hadPowerShellCallOperator) {
@@ -2937,6 +2975,14 @@ function convertClaudeToWindsurfMarkdown(content) {
   converted = converted.replace(/`CLAUDE\.md`/g, '`.windsurf/rules`');
   converted = converted.replace(/\bCLAUDE\.md\b/g, '.windsurf/rules');
   converted = converted.replace(/\.claude\/skills\//g, '.windsurf/skills/');
+  converted = converted.replace(/\.\/\.claude\//g, './.windsurf/');
+  converted = converted.replace(/\.claude\//g, '.windsurf/');
+  // Bare forms (no trailing slash) — after slash forms to avoid double-rewrite.
+  // Use negative lookahead (?![\w-]) to preserve .claude-plugin and .claudeignore.
+  converted = converted.replace(/~\/\.claude(?![\w-])/g, '~/.windsurf');
+  converted = converted.replace(/\$HOME\/\.claude(?![\w-])/g, '$HOME/.windsurf');
+  // Environment variable name rewrite
+  converted = converted.replace(/\bCLAUDE_CONFIG_DIR\b/g, 'WINDSURF_CONFIG_DIR');
   // Remove Claude Code-specific bug workarounds before brand replacement
   converted = converted.replace(/\*\*Known Claude Code bug \(classifyHandoffIfNeeded\):\*\*[^\n]*\n/g, '');
   converted = converted.replace(/- \*\*classifyHandoffIfNeeded false failure:\*\*[^\n]*\n/g, '');
@@ -3158,6 +3204,12 @@ function convertClaudeToTraeMarkdown(content) {
   converted = converted.replace(/\.claude\/skills\//g, '.trae/skills/');
   converted = converted.replace(/\.\/\.claude\//g, './.trae/');
   converted = converted.replace(/\.claude\//g, '.trae/');
+  // Bare forms (no trailing slash) — after slash forms to avoid double-rewrite.
+  // Use negative lookahead (?![\w-]) to preserve .claude-plugin and .claudeignore.
+  converted = converted.replace(/~\/\.claude(?![\w-])/g, '~/.trae');
+  converted = converted.replace(/\$HOME\/\.claude(?![\w-])/g, '$HOME/.trae');
+  // Environment variable name rewrite
+  converted = converted.replace(/\bCLAUDE_CONFIG_DIR\b/g, 'TRAE_CONFIG_DIR');
   converted = converted.replace(/\*\*Known Claude Code bug \(classifyHandoffIfNeeded\):\*\*[^\n]*\n/g, '');
   converted = converted.replace(/- \*\*classifyHandoffIfNeeded false failure:\*\*[^\n]*\n/g, '');
   converted = converted.replace(/\bClaude Code\b/g, 'Trae');
@@ -3596,14 +3648,17 @@ function generateCodexAgentToml(agentName, agentContent, modelOverrides = null, 
   // Task() model parameters). See #2256.
   // Precedence: per-agent model_overrides > runtime-aware tier resolution (#2517).
   const modelOverride = modelOverrides?.[resolvedName] || modelOverrides?.[agentName];
+  let hasPinnedModel = false;
   if (modelOverride) {
     lines.push(`model = ${JSON.stringify(modelOverride)}`);
+    hasPinnedModel = true;
   } else if (runtimeResolver) {
     // #2517 — runtime-aware tier resolution. Embeds Codex-native model + reasoning_effort
     // from RUNTIME_PROFILE_MAP / model_profile_overrides for the configured tier.
     const entry = runtimeResolver.resolve(resolvedName) || runtimeResolver.resolve(agentName);
     if (entry?.model) {
       lines.push(`model = ${JSON.stringify(entry.model)}`);
+      hasPinnedModel = true;
       // model is resolved here; reasoning_effort from catalog tier is REPLACED by the
       // unified effort resolver below (#443). Do NOT emit entry.reasoning_effort here.
     }
@@ -3614,9 +3669,15 @@ function generateCodexAgentToml(agentName, agentContent, modelOverrides = null, 
   // from the same effort.agent_overrides / effort.routing_tier_defaults / effort.default
   // config source. Codex does not support 'max' → clamped to 'xhigh' by
   // gsdRenderEffortForRuntime('codex', ...).
-  const _universalEffortCodex = resolveInstallTimeEffort(effortCfg, resolvedName !== agentName ? resolvedName : agentName);
-  const _renderedEffortCodex = _getGsdEffortCatalog().renderEffortForRuntime('codex', _universalEffortCodex).value;
-  lines.push(`model_reasoning_effort = ${JSON.stringify(_renderedEffortCodex)}`);
+  // #838 — Do not pin effort when Codex is intentionally inheriting the parent
+  // chat model. A TOML with no `model` but a static `model_reasoning_effort`
+  // creates confusing partial routing: model follows the Codex UI while effort
+  // follows GSD. Keep those knobs coupled unless GSD also pins the model.
+  if (hasPinnedModel) {
+    const _universalEffortCodex = resolveInstallTimeEffort(effortCfg, resolvedName !== agentName ? resolvedName : agentName);
+    const _renderedEffortCodex = _getGsdEffortCatalog().renderEffortForRuntime('codex', _universalEffortCodex).value;
+    lines.push(`model_reasoning_effort = ${JSON.stringify(_renderedEffortCodex)}`);
+  }
 
   // #774 — Emit service_tier and model_verbosity for light-tier agents.
   // Light-tier agents (routingTier: "light" in model-catalog.json) are haiku-equivalent
@@ -7614,6 +7675,11 @@ function _applyRuntimeRewrites(content, runtime, pathPrefix) {
       content = content.replace(/~\/\.claude\//g, pathPrefix);
       content = content.replace(/\$HOME\/\.claude\//g, pathPrefix);
       content = content.replace(/\.\/\.claude\//g, `./${dirName}/`);
+      // Bare forms (no trailing slash) — use (?![\w-]) instead of \b so that
+      // .claude-plugin / .claudeignore are NOT corrupted (the \b word-boundary
+      // fires between 'e' and '-', which rewrites .claude-plugin → .windsurf-plugin).
+      content = content.replace(/~\/\.claude(?![\w-])/g, normalizedPathPrefix);
+      content = content.replace(/\$HOME\/\.claude(?![\w-])/g, normalizedPathPrefix);
       content = content.replace(/~\/\.codeium\/windsurf\//g, pathPrefix);
       content = processAttribution(content, getCommitAttribution(runtime));
       break;
@@ -11859,6 +11925,18 @@ function install(isGlobal, runtime = 'claude', options = {}) {
     }
   }
 
+  // Helper: detect whether a hook entry references a managed hook by name.
+  // Checks both the plain command string (standard form) and the args array
+  // (command+args / wrapped-launcher form used by windowless launchers on
+  // Windows and some custom PATH-less environments).  Without this check the
+  // presence guards below only inspect h.command, so an args-form wrapper is
+  // invisible and a stock string-command entry is appended on every
+  // install/update, running the hook twice. (#976)
+  function referencesHook(h, hookName) {
+    return (typeof h.command === 'string' && h.command.includes(hookName)) ||
+      (Array.isArray(h.args) && h.args.some(a => typeof a === 'string' && a.includes(hookName)));
+  }
+
   // Configure SessionStart hook for update checking (skip for opencode)
   if (!isOpencode && !isKilo) {
     if (!settings.hooks) {
@@ -11869,7 +11947,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
     }
 
     const hasGsdUpdateHook = settings.hooks.SessionStart.some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-check-update'))
+      entry.hooks && entry.hooks.some(h => referencesHook(h, 'gsd-check-update'))
     );
 
     // Guard: only register if the hook file was actually installed (#1754).
@@ -11897,7 +11975,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
     }
 
     const hasContextMonitorHook = settings.hooks[postToolEvent].some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-context-monitor'))
+      entry.hooks && entry.hooks.some(h => referencesHook(h, 'gsd-context-monitor'))
     );
 
     const contextMonitorFile = path.join(targetDir, 'hooks', 'gsd-context-monitor.js');
@@ -11918,14 +11996,14 @@ function install(isGlobal, runtime = 'claude', options = {}) {
     } else {
       // Migrate existing context monitor hooks: add matcher and timeout if missing
       for (const entry of settings.hooks[postToolEvent]) {
-        if (entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-context-monitor'))) {
+        if (entry.hooks && entry.hooks.some(h => referencesHook(h, 'gsd-context-monitor'))) {
           let migrated = false;
           if (!entry.matcher) {
             entry.matcher = 'Bash|Edit|Write|MultiEdit|Agent|Task';
             migrated = true;
           }
           for (const h of entry.hooks) {
-            if (h.command && h.command.includes('gsd-context-monitor') && !h.timeout) {
+            if (referencesHook(h, 'gsd-context-monitor') && !h.timeout) {
               h.timeout = 10;
               migrated = true;
             }
@@ -11945,7 +12023,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
     }
 
     const hasPromptGuardHook = settings.hooks[preToolEvent].some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-prompt-guard'))
+      entry.hooks && entry.hooks.some(h => referencesHook(h, 'gsd-prompt-guard'))
     );
 
     const promptGuardFile = path.join(targetDir, 'hooks', 'gsd-prompt-guard.js');
@@ -11969,7 +12047,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
     // Prevents infinite retry loops when non-Claude models attempt to edit
     // files without reading them first. Advisory-only — does not block.
     const hasReadGuardHook = settings.hooks[preToolEvent].some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-read-guard'))
+      entry.hooks && entry.hooks.some(h => referencesHook(h, 'gsd-read-guard'))
     );
 
     const readGuardFile = path.join(targetDir, 'hooks', 'gsd-read-guard.js');
@@ -11993,7 +12071,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
     // Scans content returned by the Read tool for injection patterns, including
     // summarisation-specific patterns that survive context compression.
     const hasReadInjectionScannerHook = settings.hooks[postToolEvent].some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-read-injection-scanner'))
+      entry.hooks && entry.hooks.some(h => referencesHook(h, 'gsd-read-injection-scanner'))
     );
 
     const readInjectionScannerFile = path.join(targetDir, 'hooks', 'gsd-read-injection-scanner.js');
@@ -12027,7 +12105,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
       : localCmd('gsd-workflow-guard.js');
     const workflowGuardMatcher = 'Bash|Edit|Write|MultiEdit';
     const workflowGuardHookEntry = settings.hooks[preToolEvent].find(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-workflow-guard'))
+      entry.hooks && entry.hooks.some(h => referencesHook(h, 'gsd-workflow-guard'))
     );
     const hasWorkflowGuardHook = Boolean(workflowGuardHookEntry);
 
@@ -12059,7 +12137,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
       ? buildHookCommand(targetDir, 'gsd-worktree-path-guard.js', hookOpts)
       : localCmd('gsd-worktree-path-guard.js');
     const hasWorktreePathGuardHook = settings.hooks[preToolEvent].some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-worktree-path-guard'))
+      entry.hooks && entry.hooks.some(h => referencesHook(h, 'gsd-worktree-path-guard'))
     );
     const worktreePathGuardFile = path.join(targetDir, 'hooks', 'gsd-worktree-path-guard.js');
     if (!hasWorktreePathGuardHook && fs.existsSync(worktreePathGuardFile) && worktreePathGuardCommand) {
@@ -12083,7 +12161,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
       ? buildHookCommand(targetDir, 'gsd-validate-commit.sh', hookOpts)
       : localShellCmd('gsd-validate-commit.sh');
     const hasValidateCommitHook = settings.hooks[preToolEvent].some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-validate-commit'))
+      entry.hooks && entry.hooks.some(h => referencesHook(h, 'gsd-validate-commit'))
     );
     // Guard: only register if the .sh file was actually installed. If the npm package
     // omitted the file (as happened in v1.32.0, bug #1817), registering a missing hook
@@ -12115,7 +12193,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
       ? buildHookCommand(targetDir, 'gsd-graphify-update.sh', hookOpts)
       : localShellCmd('gsd-graphify-update.sh');
     const hasGraphifyUpdateHook = settings.hooks[postToolEvent].some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-graphify-update'))
+      entry.hooks && entry.hooks.some(h => referencesHook(h, 'gsd-graphify-update'))
     );
     const graphifyUpdateFile = path.join(targetDir, 'hooks', 'gsd-graphify-update.sh');
     if (!hasGraphifyUpdateHook && fs.existsSync(graphifyUpdateFile) && graphifyUpdateCommand) {
@@ -12141,7 +12219,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
       ? buildHookCommand(targetDir, 'gsd-session-state.sh', hookOpts)
       : localShellCmd('gsd-session-state.sh');
     const hasSessionStateHook = settings.hooks.SessionStart.some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-session-state'))
+      entry.hooks && entry.hooks.some(h => referencesHook(h, 'gsd-session-state'))
     );
     const sessionStateFile = path.join(targetDir, 'hooks', 'gsd-session-state.sh');
     if (!hasSessionStateHook && fs.existsSync(sessionStateFile) && sessionStateCommand) {
@@ -12165,7 +12243,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
       ? buildHookCommand(targetDir, 'gsd-phase-boundary.sh', hookOpts)
       : localShellCmd('gsd-phase-boundary.sh');
     const hasPhaseBoundaryHook = settings.hooks[postToolEvent].some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-phase-boundary'))
+      entry.hooks && entry.hooks.some(h => referencesHook(h, 'gsd-phase-boundary'))
     );
     const phaseBoundaryFile = path.join(targetDir, 'hooks', 'gsd-phase-boundary.sh');
     if (!hasPhaseBoundaryHook && fs.existsSync(phaseBoundaryFile) && phaseBoundaryCommand) {
@@ -12209,7 +12287,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
           settings.hooks[event] = [];
         }
         const alreadyHasContextMonitor = settings.hooks[event].some(entry =>
-          entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-context-monitor'))
+          entry.hooks && entry.hooks.some(h => referencesHook(h, 'gsd-context-monitor'))
         );
         if (!alreadyHasContextMonitor && fs.existsSync(contextMonitorFile) && contextMonitorCommand) {
           settings.hooks[event].push({
@@ -12258,7 +12336,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
           settings.hooks[geminiEvent] = [];
         }
         const alreadyHasContextMonitor = settings.hooks[geminiEvent].some(entry =>
-          entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-context-monitor'))
+          entry.hooks && entry.hooks.some(h => referencesHook(h, 'gsd-context-monitor'))
         );
         if (!alreadyHasContextMonitor && fs.existsSync(contextMonitorFile) && contextMonitorCommand) {
           settings.hooks[geminiEvent].push({
@@ -12295,7 +12373,7 @@ function install(isGlobal, runtime = 'claude', options = {}) {
       }
       const configReloadFile = path.join(targetDir, 'hooks', 'gsd-config-reload.js');
       const alreadyHasConfigReload = settings.hooks.FileChanged.some(entry =>
-        entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-config-reload'))
+        entry.hooks && entry.hooks.some(h => referencesHook(h, 'gsd-config-reload'))
       );
       if (!alreadyHasConfigReload && fs.existsSync(configReloadFile) && configReloadCommand) {
         settings.hooks.FileChanged.push({
@@ -12466,7 +12544,7 @@ function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallS
       if (!settings.hooks) settings.hooks = {};
       if (!settings.hooks.SessionStart) settings.hooks.SessionStart = [];
       const alreadyRegistered = settings.hooks.SessionStart.some(entry =>
-        entry && entry.hooks && entry.hooks.some(h => h && h.command && h.command.includes('gsd-update-banner'))
+        entry && entry.hooks && entry.hooks.some(h => h && referencesHook(h, 'gsd-update-banner'))
       );
       const bannerHookFile = configDir ? path.join(configDir, 'hooks', 'gsd-update-banner.js') : null;
       const bannerInstalled = bannerHookFile ? fs.existsSync(bannerHookFile) : false;
