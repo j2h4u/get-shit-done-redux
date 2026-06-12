@@ -450,9 +450,245 @@ function validateFeatureBody(cap) {
   return errors;
 }
 
+// ADR-857 phase 5e: Closed ConverterName enum — complete set used across 16 runtime descriptors,
+// all exported by bin/install.js. Any ArtifactKind with a non-null converter must use one of these.
+const VALID_CONVERTER_NAMES = new Set([
+  'convertClaudeCommandToAntigravitySkill',
+  'convertClaudeCommandToAugmentSkill',
+  'convertClaudeCommandToClineSkill',
+  'convertClaudeCommandToClaudeSkill',
+  'convertClaudeCommandToCodebuddyCommand',
+  'convertClaudeCommandToCodebuddySkill',
+  'convertClaudeCommandToCodexSkill',
+  'convertClaudeCommandToCopilotSkill',
+  'convertClaudeCommandToCursorCommand',
+  'convertClaudeCommandToCursorSkill',
+  'convertClaudeCommandToKiloSkill',
+  'convertClaudeCommandToKimiSkill',
+  'convertClaudeCommandToOpencodeSkill',
+  'convertClaudeCommandToTraeSkill',
+  'convertClaudeCommandToWindsurfSkill',
+]);
+
 // C3: Validate role:runtime body
 const VALID_CONFIG_FORMATS = new Set(['settings-json', 'toml', 'markdown', 'markdown-dir', 'none']);
+const VALID_CONFIG_HOME_KINDS = new Set(['dot-home', 'dot-home-nested', 'xdg', 'generic-agents-root']);
+const VALID_COMMAND_STYLES = new Set(['slash-hyphen', 'shell-var']);
+const VALID_HOOKS_SURFACES = new Set(['settings-json', 'codex-hooks-json', 'cursor-hooks-json', 'copilot-inline', 'cline-rules', 'none']);
+const VALID_HOOK_EVENTS = new Set(['claude', 'gemini', 'opencode-subset']);
+const VALID_SANDBOX_TIERS = new Set(['none', 'codex-agent-sandbox']);
+const VALID_ARTIFACT_KIND_NAMES = new Set(['commands', 'agents', 'skills', 'kimi-agents']);
+const VALID_ARTIFACT_NESTINGS = new Set(['flat', 'nested']);
 const FEATURE_FIELDS_FORBIDDEN_ON_RUNTIME = ['skills', 'agents', 'steps', 'contributions', 'gates', 'hooks'];
+const VALID_INSTALL_SURFACES = new Set(['settings-json', 'codex-toml', 'copilot-instructions', 'cline-rules', 'cursor-hooks-json', 'profile-marker-only']);
+const VALID_PERMISSION_WRITERS = new Set(['opencode', 'kilo']);
+const VALID_EXTENDED_HOOK_EVENTS = new Set(['SubagentStop', 'Stop', 'PreCompact', 'FileChanged', 'BeforeAgent', 'AfterAgent', 'BeforeModel']);
+
+// GATE A: installSurface → allowed hooksSurface values (DEFECT.GENERATIVE-FIX: parity invariant)
+// Derived from the actual pairings in the 16 real runtime descriptors.
+const INSTALL_SURFACE_TO_ALLOWED_HOOKS_SURFACES = new Map([
+  ['settings-json',        new Set(['settings-json', 'none'])],
+  ['codex-toml',           new Set(['codex-hooks-json'])],
+  ['copilot-instructions', new Set(['copilot-inline'])],
+  ['cline-rules',          new Set(['cline-rules'])],
+  ['cursor-hooks-json',    new Set(['cursor-hooks-json'])],
+  ['profile-marker-only',  new Set(['none'])],
+]);
+
+// GATE B: extended hook event families → required hookEvents value
+// Gemini agent-events require hookEvents='gemini'; Claude-family events require hookEvents='claude'.
+const GEMINI_AGENT_EVENTS = new Set(['BeforeAgent', 'AfterAgent', 'BeforeModel']);
+const CLAUDE_FAMILY_EVENTS = new Set(['SubagentStop', 'Stop', 'PreCompact', 'FileChanged']);
+
+/**
+ * Validate a runtime.configHome object per ADR-1016 Decision 1.
+ * Returns an array of error strings.
+ *
+ * @param {string} capId  Capability id (for error messages)
+ * @param {*}      ch     The configHome value
+ * @returns {string[]}
+ */
+function validateConfigHome(capId, ch) {
+  const errors = [];
+  const ctx = 'capability "' + capId + '" runtime.configHome';
+
+  if (typeof ch !== 'object' || ch === null || Array.isArray(ch)) {
+    errors.push(ctx + ' must be an object (got: ' + (ch === null ? 'null' : typeof ch) + ')');
+    return errors;
+  }
+
+  // kind — must be in closed vocab; inline literal guard (CodeQL barrier)
+  if (ch.kind === '__proto__' || ch.kind === 'constructor' || ch.kind === 'prototype') {
+    errors.push(ctx + '.kind "' + ch.kind + '" is a reserved name');
+  } else if (!VALID_CONFIG_HOME_KINDS.has(ch.kind)) {
+    errors.push(
+      ctx + '.kind must be one of: ' + [...VALID_CONFIG_HOME_KINDS].join(', ') +
+      ' (got: ' + JSON.stringify(ch.kind) + ')',
+    );
+  }
+
+  // name — required string
+  if (typeof ch.name !== 'string' || ch.name.length === 0) {
+    errors.push(ctx + '.name must be a non-empty string');
+  }
+
+  // parent — required when kind == dot-home-nested
+  if (ch.kind === 'dot-home-nested') {
+    if (typeof ch.parent !== 'string' || ch.parent.length === 0) {
+      errors.push(ctx + '.parent must be a non-empty string when kind is "dot-home-nested"');
+    }
+  }
+
+  // env — required; must be an array of strings (every runtime has ≥0 env overrides)
+  if (!Array.isArray(ch.env)) {
+    errors.push(ctx + '.env is required and must be an array of strings (got: ' + JSON.stringify(ch.env) + ')');
+  } else {
+    for (let i = 0; i < ch.env.length; i++) {
+      if (typeof ch.env[i] !== 'string') {
+        errors.push(ctx + '.env[' + i + '] must be a string');
+      }
+    }
+  }
+
+  // probe — optional; if present must be an array of strings
+  if (ch.probe !== undefined) {
+    if (!Array.isArray(ch.probe)) {
+      errors.push(ctx + '.probe must be an array of strings if present');
+    } else {
+      for (let i = 0; i < ch.probe.length; i++) {
+        if (typeof ch.probe[i] !== 'string') {
+          errors.push(ctx + '.probe[' + i + '] must be a string');
+        }
+      }
+    }
+  }
+
+  // probeExists — optional; if present must be a non-empty string (sub-path existence check for probe)
+  if (ch.probeExists !== undefined) {
+    if (typeof ch.probeExists !== 'string' || ch.probeExists.length === 0) {
+      errors.push(ctx + '.probeExists must be a non-empty string if present (got: ' + JSON.stringify(ch.probeExists) + ')');
+    }
+  }
+
+  // skillsHome — optional; if present must be a full valid configHome object (recursive validation)
+  if (ch.skillsHome !== undefined) {
+    // Recursive call: validate skillsHome as a nested configHome.
+    // Use a synthetic capId to surface the sub-path in error messages.
+    const skillsHomeErrors = validateConfigHome(capId + '.skillsHome', ch.skillsHome);
+    // Rewrite the inner ctx prefix so errors read as "...runtime.configHome.skillsHome..."
+    for (const e of skillsHomeErrors) {
+      errors.push(e.replace(
+        'capability "' + capId + '.skillsHome" runtime.configHome',
+        ctx + '.skillsHome',
+      ));
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * Validate a single ArtifactKind entry per ADR-1016 Decision 3.
+ * Returns an array of error strings.
+ *
+ * @param {string} capId   Capability id (for error messages)
+ * @param {*}      entry   The ArtifactKind object
+ * @param {string} prefix  Path prefix for error messages (e.g. "artifactLayout.global[0]")
+ * @returns {string[]}
+ */
+function validateArtifactKindEntry(capId, entry, prefix) {
+  const errors = [];
+  const ctx = 'capability "' + capId + '" runtime.' + prefix;
+
+  if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+    errors.push(ctx + ' must be an object');
+    return errors;
+  }
+
+  // kind — must be in closed vocab; inline literal guard (CodeQL barrier)
+  if (entry.kind === '__proto__' || entry.kind === 'constructor' || entry.kind === 'prototype') {
+    errors.push(ctx + '.kind "' + entry.kind + '" is a reserved name');
+  } else if (!VALID_ARTIFACT_KIND_NAMES.has(entry.kind)) {
+    errors.push(
+      ctx + '.kind must be one of: ' + [...VALID_ARTIFACT_KIND_NAMES].join(', ') +
+      ' (got: ' + JSON.stringify(entry.kind) + ')',
+    );
+  }
+
+  // destSubpath — required non-empty string
+  if (typeof entry.destSubpath !== 'string' || entry.destSubpath.length === 0) {
+    errors.push(ctx + '.destSubpath must be a non-empty string');
+  }
+
+  // nesting — required; must be in closed vocab (ADR-857 §5d: now drives install)
+  if (entry.nesting === undefined || entry.nesting === null) {
+    errors.push(ctx + '.nesting is required and must be one of: ' + [...VALID_ARTIFACT_NESTINGS].join(', '));
+  } else if (!VALID_ARTIFACT_NESTINGS.has(entry.nesting)) {
+    errors.push(
+      ctx + '.nesting must be one of: ' + [...VALID_ARTIFACT_NESTINGS].join(', ') +
+      ' (got: ' + JSON.stringify(entry.nesting) + ')',
+    );
+  }
+
+  // prefix — required; must be a string (may be empty string '')
+  if (entry.prefix === undefined || entry.prefix === null) {
+    errors.push(ctx + '.prefix is required (must be a string, may be empty)');
+  } else if (typeof entry.prefix !== 'string') {
+    errors.push(ctx + '.prefix must be a string (got: ' + typeof entry.prefix + ')');
+  }
+
+  // recursive — optional; if present must be a boolean
+  if (entry.recursive !== undefined) {
+    if (typeof entry.recursive !== 'boolean') {
+      errors.push(ctx + '.recursive must be a boolean if present (got: ' + typeof entry.recursive + ')');
+    }
+  }
+
+  // converter — required; must be a string or null (closed ConverterName enum — now enforced in phase 5e)
+  if (!Object.prototype.hasOwnProperty.call(entry, 'converter')) {
+    errors.push(ctx + '.converter is required (must be a string or null)');
+  } else if (entry.converter !== null && typeof entry.converter !== 'string') {
+    errors.push(ctx + '.converter must be a string or null (got: ' + typeof entry.converter + ')');
+  } else if (entry.converter !== null && typeof entry.converter === 'string' &&
+             !VALID_CONVERTER_NAMES.has(entry.converter)) {
+    // Closed ConverterName enum (ADR-857 phase 5e): reject unknown converter names
+    errors.push(ctx + '.converter "' + entry.converter + '" is not a known ConverterName');
+  }
+
+  return errors;
+}
+
+/**
+ * Validate runtime.artifactLayout per ADR-1016 Decision 3.
+ * Accepts the structured { global, local } shape.
+ * Returns an array of error strings.
+ *
+ * @param {string} capId  Capability id (for error messages)
+ * @param {*}      layout The artifactLayout value
+ * @returns {string[]}
+ */
+function validateArtifactLayout(capId, layout) {
+  const errors = [];
+  const ctx = 'capability "' + capId + '" runtime.artifactLayout';
+
+  if (typeof layout !== 'object' || layout === null || Array.isArray(layout)) {
+    errors.push(ctx + ' must be an object with "global" and "local" arrays');
+    return errors;
+  }
+
+  for (const scope of ['global', 'local']) {
+    const arr = layout[scope];
+    if (!Array.isArray(arr)) {
+      errors.push(ctx + '.' + scope + ' must be an array');
+    } else {
+      for (let i = 0; i < arr.length; i++) {
+        errors.push(...validateArtifactKindEntry(capId, arr[i], 'artifactLayout.' + scope + '[' + i + ']'));
+      }
+    }
+  }
+
+  return errors;
+}
 
 function validateRuntimeBody(cap) {
   const errors = [];
@@ -471,26 +707,141 @@ function validateRuntimeBody(cap) {
   }
 
   const r = cap.runtime;
-  if (typeof r.configHome !== 'string' || r.configHome.length === 0) {
-    errors.push('runtime.configHome must be a non-empty string');
-  }
+
+  // configHome — must be a structured object (ADR-1016 Decision 1)
+  errors.push(...validateConfigHome(cap.id || '(unknown)', r.configHome));
+
+  // configFormat — closed 5-enum (unchanged)
   if (!VALID_CONFIG_FORMATS.has(r.configFormat)) {
     errors.push('runtime.configFormat must be one of: ' + [...VALID_CONFIG_FORMATS].join(', ') + ' (got: ' + r.configFormat + ')');
   }
-  if (!Array.isArray(r.artifactLayout)) {
-    errors.push('runtime.artifactLayout must be an array');
+
+  // artifactLayout — structured { global, local } per ADR-1016 Decision 3
+  errors.push(...validateArtifactLayout(cap.id || '(unknown)', r.artifactLayout));
+
+  // commandStyle — closed 2-enum (ADR-1016 Decision 4); inline literal guard (CodeQL barrier)
+  if (r.commandStyle === '__proto__' || r.commandStyle === 'constructor' || r.commandStyle === 'prototype') {
+    errors.push('runtime.commandStyle "' + r.commandStyle + '" is a reserved name');
+  } else if (!VALID_COMMAND_STYLES.has(r.commandStyle)) {
+    errors.push(
+      'runtime.commandStyle must be one of: ' + [...VALID_COMMAND_STYLES].join(', ') +
+      ' (got: ' + JSON.stringify(r.commandStyle) + ')',
+    );
   }
-  if (typeof r.commandStyle !== 'string' || r.commandStyle.length === 0) {
-    errors.push('runtime.commandStyle must be a non-empty string');
+
+  // hooksSurface — closed 6-enum (ADR-1016 Decision 5); inline literal guard (CodeQL barrier)
+  if (r.hooksSurface === '__proto__' || r.hooksSurface === 'constructor' || r.hooksSurface === 'prototype') {
+    errors.push('runtime.hooksSurface "' + r.hooksSurface + '" is a reserved name');
+  } else if (!VALID_HOOKS_SURFACES.has(r.hooksSurface)) {
+    errors.push(
+      'runtime.hooksSurface must be one of: ' + [...VALID_HOOKS_SURFACES].join(', ') +
+      ' (got: ' + JSON.stringify(r.hooksSurface) + ')',
+    );
   }
-  if (typeof r.hooksSurface !== 'string' || r.hooksSurface.length === 0) {
-    errors.push('runtime.hooksSurface must be a non-empty string');
+
+  // hookEvents — optional; if present must be in closed 3-enum (ADR-1016 Decision 5)
+  if (r.hookEvents !== undefined) {
+    if (r.hookEvents === '__proto__' || r.hookEvents === 'constructor' || r.hookEvents === 'prototype') {
+      errors.push('runtime.hookEvents "' + r.hookEvents + '" is a reserved name');
+    } else if (!VALID_HOOK_EVENTS.has(r.hookEvents)) {
+      errors.push(
+        'runtime.hookEvents must be one of: ' + [...VALID_HOOK_EVENTS].join(', ') +
+        ' (got: ' + JSON.stringify(r.hookEvents) + ')',
+      );
+    }
   }
-  if (typeof r.sandboxTier !== 'string' || r.sandboxTier.length === 0) {
-    errors.push('runtime.sandboxTier must be a non-empty string');
+
+  // sandboxTier — closed 2-enum (ADR-1016 Decision 6); inline literal guard (CodeQL barrier)
+  if (r.sandboxTier === '__proto__' || r.sandboxTier === 'constructor' || r.sandboxTier === 'prototype') {
+    errors.push('runtime.sandboxTier "' + r.sandboxTier + '" is a reserved name');
+  } else if (!VALID_SANDBOX_TIERS.has(r.sandboxTier)) {
+    errors.push(
+      'runtime.sandboxTier must be one of: ' + [...VALID_SANDBOX_TIERS].join(', ') +
+      ' (got: ' + JSON.stringify(r.sandboxTier) + ')',
+    );
   }
+
+  // supportTier — 1 or 2 (unchanged)
   if (r.supportTier !== 1 && r.supportTier !== 2) {
     errors.push('runtime.supportTier must be 1 or 2 (got: ' + r.supportTier + ')');
+  }
+
+  // installSurface — required string in closed enum
+  if (!VALID_INSTALL_SURFACES.has(r.installSurface)) {
+    errors.push(
+      'runtime.installSurface must be one of: ' + [...VALID_INSTALL_SURFACES].join(', ') +
+      ' (got: ' + JSON.stringify(r.installSurface) + ')',
+    );
+  }
+
+  // writesSharedSettings — required boolean
+  if (typeof r.writesSharedSettings !== 'boolean') {
+    errors.push(
+      'runtime.writesSharedSettings must be a boolean (got: ' + JSON.stringify(r.writesSharedSettings) + ')',
+    );
+  }
+
+  // permissionWriter — required key; value must be null or a string in VALID_PERMISSION_WRITERS
+  if (!Object.prototype.hasOwnProperty.call(r, 'permissionWriter')) {
+    errors.push('runtime.permissionWriter is required (must be null or one of: ' + [...VALID_PERMISSION_WRITERS].join(', ') + ')');
+  } else if (r.permissionWriter !== null && !VALID_PERMISSION_WRITERS.has(r.permissionWriter)) {
+    errors.push(
+      'runtime.permissionWriter must be null or one of: ' + [...VALID_PERMISSION_WRITERS].join(', ') +
+      ' (got: ' + JSON.stringify(r.permissionWriter) + ')',
+    );
+  }
+
+  // extendedHookEvents — required array; every element must be in closed enum
+  if (!Array.isArray(r.extendedHookEvents)) {
+    errors.push(
+      'runtime.extendedHookEvents must be an array (got: ' + JSON.stringify(r.extendedHookEvents) + ')',
+    );
+  } else {
+    for (let i = 0; i < r.extendedHookEvents.length; i++) {
+      const ev = r.extendedHookEvents[i];
+      if (typeof ev !== 'string' || !VALID_EXTENDED_HOOK_EVENTS.has(ev)) {
+        errors.push(
+          'runtime.extendedHookEvents[' + i + '] must be one of: ' + [...VALID_EXTENDED_HOOK_EVENTS].join(', ') +
+          ' (got: ' + JSON.stringify(ev) + ')',
+        );
+      }
+    }
+  }
+
+  // GATE A: installSurface ↔ hooksSurface consistency (DEFECT.GENERATIVE-FIX)
+  // Only check if both fields are valid strings (individual field validators above report type errors).
+  if (typeof r.installSurface === 'string' && typeof r.hooksSurface === 'string') {
+    const allowedHooksSurfaces = INSTALL_SURFACE_TO_ALLOWED_HOOKS_SURFACES.get(r.installSurface);
+    if (allowedHooksSurfaces !== undefined && !allowedHooksSurfaces.has(r.hooksSurface)) {
+      errors.push(
+        'runtime.hooksSurface "' + r.hooksSurface + '" is not valid for installSurface "' + r.installSurface + '"' +
+        ' — allowed: ' + [...allowedHooksSurfaces].join(', ') +
+        ' (src: INSTALL_SURFACE_TO_ALLOWED_HOOKS_SURFACES in scripts/gen-capability-registry.cjs)',
+      );
+    }
+  }
+
+  // GATE B: extendedHookEvents ↔ hookEvents consistency (DEFECT.GENERATIVE-FIX)
+  // If extendedHookEvents contains Gemini agent-events, hookEvents must be 'gemini'.
+  // If it contains Claude-family events, hookEvents must be 'claude'.
+  // Empty extendedHookEvents imposes no constraint.
+  if (Array.isArray(r.extendedHookEvents) && r.extendedHookEvents.length > 0) {
+    const hasGeminiEvents = r.extendedHookEvents.some((ev) => GEMINI_AGENT_EVENTS.has(ev));
+    const hasClaudeEvents = r.extendedHookEvents.some((ev) => CLAUDE_FAMILY_EVENTS.has(ev));
+    if (hasGeminiEvents && r.hookEvents !== 'gemini') {
+      errors.push(
+        'runtime.extendedHookEvents contains Gemini agent-events (' +
+        r.extendedHookEvents.filter((ev) => GEMINI_AGENT_EVENTS.has(ev)).join(', ') +
+        ') but runtime.hookEvents is "' + r.hookEvents + '" — must be "gemini"',
+      );
+    }
+    if (hasClaudeEvents && r.hookEvents !== 'claude') {
+      errors.push(
+        'runtime.extendedHookEvents contains Claude-family events (' +
+        r.extendedHookEvents.filter((ev) => CLAUDE_FAMILY_EVENTS.has(ev)).join(', ') +
+        ') but runtime.hookEvents is "' + r.hookEvents + '" — must be "claude"',
+      );
+    }
   }
 
   return errors;
@@ -1295,6 +1646,76 @@ function runConsistencyGate(capabilityClusters, profileMembership, capMap) {
   return warnings;
 }
 
+// ─── ADR-857 phase 5e: configFormat ↔ installSurface parity gate ─────────────
+
+// Map: installSurface → expected configFormat
+// Derived from the pairing of capability.json descriptors (installSurface)
+// and capability.json descriptors (configFormat). DEFECT.GENERATIVE-FIX: this map
+// is the single parity contract between the two generated surfaces.
+// NOTE: both values come from the descriptor bodies in capMap — no dependency on
+// runtime-config-adapter-registry.cjs, which now requires capability-registry.cjs
+// (the file this gen-script produces), and thus must not be required here.
+const INSTALL_SURFACE_TO_CONFIG_FORMAT = new Map([
+  ['settings-json',        'settings-json'],
+  ['codex-toml',           'toml'],
+  ['copilot-instructions', 'markdown'],
+  ['cline-rules',          'markdown-dir'],
+  ['cursor-hooks-json',    'none'],
+  ['profile-marker-only',  'none'],
+]);
+
+/**
+ * ADR-857 phase 5e: configFormat ↔ installSurface parity gate.
+ *
+ * For each runtime capability that has an installSurface in its descriptor,
+ * assert that its configFormat matches the expected value derived from its
+ * installSurface.  Both values are read directly from the capMap descriptor
+ * bodies — no dependency on runtime-config-adapter-registry.cjs.
+ *
+ * HARD gate — throws on mismatch (DEFECT.GENERATIVE-FIX: this invariant is
+ * derived from two parallel generated surfaces and must fail loudly).
+ *
+ * @param {Map<string, object>} capMap  Fully-validated capability map.
+ * @returns {void}  Throws on mismatch; returns normally on success.
+ */
+function runConfigFormatParityGate(capMap) {
+  // Read installSurface directly from the descriptor bodies already loaded into
+  // capMap — eliminates the require cycle introduced when adapter-registry was
+  // changed to require capability-registry.cjs (ADR-857 phase 5g drive 2).
+  for (const [capId, cap] of capMap) {
+    if (cap.role !== 'runtime') continue;
+
+    const r = cap.runtime;
+    if (!r || typeof r.configFormat !== 'string') continue; // already validated above
+
+    // Only check runtimes that have an installSurface (i.e. are config-adapter runtimes)
+    if (typeof r.installSurface !== 'string') continue; // grok etc. excluded — no installSurface
+
+    const installSurface = r.installSurface;
+    const expectedConfigFormat = INSTALL_SURFACE_TO_CONFIG_FORMAT.get(installSurface);
+
+    if (expectedConfigFormat === undefined) {
+      // Unknown installSurface — the mapping needs to be updated
+      throw new Error(
+        'configFormat parity gate: runtime "' + capId + '" has installSurface "' + installSurface +
+        '" which is not in the INSTALL_SURFACE_TO_CONFIG_FORMAT mapping — ' +
+        'update the mapping in scripts/gen-capability-registry.cjs',
+      );
+    }
+
+    if (r.configFormat !== expectedConfigFormat) {
+      throw new Error(
+        'configFormat parity gate FAILED for runtime "' + capId + '":\n' +
+        '  installSurface:       ' + installSurface + '\n' +
+        '  expected configFormat: ' + expectedConfigFormat + '\n' +
+        '  actual configFormat:   ' + r.configFormat + '\n' +
+        'The capability.json configFormat must match the value derived from installSurface ' +
+        '(src: scripts/gen-capability-registry.cjs INSTALL_SURFACE_TO_CONFIG_FORMAT)',
+      );
+    }
+  }
+}
+
 // ─── Registry builder ─────────────────────────────────────────────────────────
 
 /**
@@ -1517,6 +1938,10 @@ function buildRegistry(capMap) {
   // Warnings are returned in the registry object so callers can emit them to stderr
   // without affecting the serialized file content (determinism gate stays clean).
   const reconciliationWarnings = runConsistencyGate(capabilityClusters, profileMembership, capMap);
+
+  // ADR-857 phase 5e: configFormat ↔ installSurface parity gate.
+  // HARD gate — throws on mismatch; SOFT skip if adapter module not loadable.
+  runConfigFormatParityGate(capMap);
 
   return {
     version: SCHEMA_VERSION,
@@ -1833,6 +2258,28 @@ module.exports = {
   runConsistencyGate,
   // ADR-959: command entry validation
   validateCommandEntry,
+  // ADR-1016 phase 5a: runtime body validators + closed-vocab sets
+  validateConfigHome,
+  validateArtifactLayout,
+  validateArtifactKindEntry,
+  VALID_CONFIG_HOME_KINDS,
+  VALID_COMMAND_STYLES,
+  VALID_HOOKS_SURFACES,
+  VALID_HOOK_EVENTS,
+  VALID_SANDBOX_TIERS,
+  VALID_ARTIFACT_KIND_NAMES,
+  VALID_ARTIFACT_NESTINGS,
+  // ADR-857 phase 5e: closed ConverterName enum
+  VALID_CONVERTER_NAMES,
+  // ADR-857 phase 5e: configFormat ↔ installSurface parity gate
+  runConfigFormatParityGate,
+  INSTALL_SURFACE_TO_CONFIG_FORMAT,
+  // ADR-857 phase 5f: cross-field consistency gates
+  INSTALL_SURFACE_TO_ALLOWED_HOOKS_SURFACES,
+  VALID_INSTALL_SURFACES,
+  VALID_EXTENDED_HOOK_EVENTS,
+  VALID_PERMISSION_WRITERS,
+  validateRuntimeBody,
   // FIX 5 (lazy): PROFILE_RANK and CLUSTERS are loaded on first access via getters
   // so importing the generator on a fresh/unbuilt worktree doesn't fail at module load.
   get PROFILE_RANK() { return getInstallProfiles().PROFILE_RANK; },

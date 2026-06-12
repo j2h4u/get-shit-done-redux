@@ -43,6 +43,7 @@ const {
   buildRuntimePromptText,
   resolveKiloConfigPath,
   configureKiloPermissions,
+  selectRuntimesFromArgs,
 } = require('../bin/install.js');
 
 const { getGlobalConfigDir } = require('../gsd-core/bin/lib/runtime-homes.cjs');
@@ -68,14 +69,18 @@ describe('getDirName — all runtimes', () => {
 });
 
 describe('getGlobalConfigDir — all runtimes default paths', () => {
-  // Test the default (no env var, no explicit dir) for each runtime
-  const ENV_KEYS = [
-    'CLAUDE_CONFIG_DIR', 'CURSOR_CONFIG_DIR', 'GEMINI_CONFIG_DIR', 'CODEX_HOME',
-    'GROK_AGENTS_HOME', 'COPILOT_CONFIG_DIR', 'COPILOT_HOME', 'WINDSURF_CONFIG_DIR', 'AUGMENT_CONFIG_DIR',
-    'TRAE_CONFIG_DIR', 'QWEN_CONFIG_DIR', 'HERMES_HOME', 'CODEBUDDY_CONFIG_DIR',
-    'CLINE_CONFIG_DIR', 'OPENCODE_CONFIG_DIR', 'OPENCODE_CONFIG', 'KILO_CONFIG_DIR',
-    'KILO_CONFIG', 'ANTIGRAVITY_CONFIG_DIR', 'XDG_CONFIG_HOME',
-  ];
+  // Derive env-var list from the registry so it stays auto-correct when new
+  // runtimes are added. GROK_AGENTS_HOME is kept explicitly because grok has
+  // no registry entry.
+  const { runtimes: _registryRuntimes } = require('../gsd-core/bin/lib/capability-registry.cjs');
+  const _registryEnvKeys = Object.values(_registryRuntimes).flatMap((r) => {
+    const ch = r.runtime?.configHome;
+    if (!ch) return [];
+    const envs = Array.isArray(ch.env) ? ch.env : [];
+    const skillsEnvs = ch.skillsHome && Array.isArray(ch.skillsHome.env) ? ch.skillsHome.env : [];
+    return [...envs, ...skillsEnvs];
+  });
+  const ENV_KEYS = [...new Set([..._registryEnvKeys, 'GROK_AGENTS_HOME', 'XDG_CONFIG_HOME'])];
   let savedEnv = {};
 
   beforeEach(() => {
@@ -256,7 +261,7 @@ describe('getConfigDirFromHome — spot-checks', () => {
     assert.strictEqual(getConfigDirFromHome('trae', true), "'.trae'");
   });
 
-  test('antigravity returns .agent (local) and legacy fallback global path when no 2.x dirs exist', () => {
+  test('antigravity returns .agents (local) and legacy fallback global path when no 2.x dirs exist', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-antigravity-empty-'));
     const savedHome = process.env.HOME;
     const savedUserProfile = process.env.USERPROFILE;
@@ -265,7 +270,7 @@ describe('getConfigDirFromHome — spot-checks', () => {
     process.env.HOME = home;
     process.env.USERPROFILE = home;
     try {
-      assert.strictEqual(getConfigDirFromHome('antigravity', false), "'.agent'");
+      assert.strictEqual(getConfigDirFromHome('antigravity', false), "'.agents'");
       assert.strictEqual(getConfigDirFromHome('antigravity', true), "'.gemini', 'antigravity'");
     } finally {
       if (savedHome === undefined) delete process.env.HOME;
@@ -829,4 +834,501 @@ describe('install — changeset CLI lands at scripts/changeset/cli.cjs (#935)', 
       'scripts/lib/ must be removed on uninstall',
     );
   });
+});
+
+// ─── Section N: Antigravity .agents canonical workspace dir (#791) ─────────────
+// allow-test-rule: runtime-contract-is-the-product
+// Reads deployed agent .md files whose text IS the product surface the
+// Antigravity runtime loads at startup (path references, command names).
+
+describe('antigravity local install writes to .agents/ canonical dir (#791)', () => {
+  let tmpDir;
+  let previousCwd;
+
+  beforeEach(() => {
+    tmpDir = createTempDir('gsd-antigravity-791-');
+    previousCwd = process.cwd();
+    process.chdir(tmpDir);
+  });
+
+  afterEach(() => {
+    process.chdir(previousCwd);
+    cleanup(tmpDir);
+  });
+
+  test('install writes workspace skills under .agents/skills/', () => {
+    const result = install(false, 'antigravity');
+    const agentsDir = path.join(tmpDir, '.agents');
+    assert.strictEqual(result.runtime, 'antigravity');
+    assert.ok(fs.existsSync(agentsDir), '.agents/ must be created for local antigravity install');
+    const skillsDir = path.join(agentsDir, 'skills');
+    assert.ok(fs.existsSync(skillsDir), '.agents/skills/ must exist after install');
+    const skillEntries = fs.readdirSync(skillsDir, { withFileTypes: true })
+      .filter(e => e.isDirectory() && e.name.startsWith('gsd-'));
+    assert.ok(skillEntries.length > 0, 'at least one gsd-* skill must be installed under .agents/skills/');
+    const firstSkill = path.join(skillsDir, skillEntries[0].name, 'SKILL.md');
+    assert.ok(fs.existsSync(firstSkill), `SKILL.md must exist at ${firstSkill}`);
+  });
+
+  test('installed agent files reference .agents/ not ~/.claude/ or bare .agent/', () => {
+    // NOTE: skill content is intentionally NOT asserted here. The installer calls
+    // convertClaudeCommandToAntigravitySkill(content, skillName, runtime, cmdNames)
+    // where the 3rd arg is the string "antigravity" (truthy), routing local skills
+    // through the global content branch — a pre-existing quirk tracked separately.
+    // Agent files are NOT affected: convertClaudeAgentToAntigravityAgent(content, isGlobal)
+    // receives the boolean isGlobal correctly, so local agents use the local (.agents/) branch.
+    install(false, 'antigravity');
+    const agentsDest = path.join(tmpDir, '.agents', 'agents');
+    assert.ok(fs.existsSync(agentsDest), '.agents/agents/ must exist after local install');
+    const agentFiles = fs.readdirSync(agentsDest)
+      .filter(f => f.startsWith('gsd-') && f.endsWith('.md'));
+    assert.ok(agentFiles.length > 0, 'pre-condition: at least one gsd-* agent must be installed');
+    for (const file of agentFiles) {
+      const content = fs.readFileSync(path.join(agentsDest, file), 'utf8');
+      // Local agent content must not contain global home-dir paths (should be .agents/)
+      assert.ok(
+        !content.includes('~/.claude/') && !content.includes('$HOME/.claude/'),
+        `${file} must not contain ~/.claude/ or $HOME/.claude/ in a local install; content uses .agents/`,
+      );
+      // Local agent content must not reference the legacy singular .agent/ path
+      const bareAgentRefs = content.match(/(?<!\w)\.agent(?!s)\//g) || [];
+      assert.strictEqual(
+        bareAgentRefs.length, 0,
+        `${file} must not reference legacy .agent/ path; found: ${bareAgentRefs.join(', ')}`,
+      );
+    }
+  });
+
+  test('legacy .agent/ is NOT written on a fresh local install', () => {
+    install(false, 'antigravity');
+    const legacyDir = path.join(tmpDir, '.agent');
+    assert.ok(!fs.existsSync(legacyDir),
+      '.agent/ must not be created by a fresh install (new installs use .agents/)');
+  });
+
+  test('global antigravity install still writes to ~/.gemini/antigravity (unchanged)', () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-ag-global-'));
+    const savedHome = process.env.HOME;
+    const savedUserProfile = process.env.USERPROFILE;
+    const savedAntigravityConfig = process.env.ANTIGRAVITY_CONFIG_DIR;
+    delete process.env.ANTIGRAVITY_CONFIG_DIR;
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    try {
+      const result = install(true, 'antigravity');
+      assert.strictEqual(result.runtime, 'antigravity');
+      assert.ok(
+        result.configDir.startsWith(homeDir),
+        `global antigravity install must go under HOME, got: ${result.configDir}`,
+      );
+      assert.ok(
+        fs.existsSync(path.join(result.configDir, 'skills')),
+        'global antigravity install must create skills/ under ~/.gemini/antigravity',
+      );
+      assert.ok(
+        !fs.existsSync(path.join(homeDir, '.agents')),
+        '.agents/ must NOT be created by a global install (global path is ~/.gemini/antigravity)',
+      );
+    } finally {
+      if (savedHome === undefined) delete process.env.HOME;
+      else process.env.HOME = savedHome;
+      if (savedUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = savedUserProfile;
+      if (savedAntigravityConfig === undefined) delete process.env.ANTIGRAVITY_CONFIG_DIR;
+      else process.env.ANTIGRAVITY_CONFIG_DIR = savedAntigravityConfig;
+      cleanup(homeDir);
+    }
+  });
+});
+// ─── Section 6: Windsurf / devin-desktop alias (#792) ───────────────────────
+
+describe('install — --devin-desktop CLI flag routes to windsurf runtime (#792)', () => {
+  test('--devin-desktop resolves to ["windsurf"] via selectRuntimesFromArgs', () => {
+    const runtimes = selectRuntimesFromArgs(['--devin-desktop']);
+    assert.deepStrictEqual(runtimes, ['windsurf'],
+      '--devin-desktop must resolve to ["windsurf"] via selectRuntimesFromArgs');
+  });
+
+  test('--windsurf and --devin-desktop both resolve to ["windsurf"]', () => {
+    assert.deepStrictEqual(selectRuntimesFromArgs(['--windsurf']), ['windsurf']);
+    assert.deepStrictEqual(selectRuntimesFromArgs(['--devin-desktop']), ['windsurf']);
+  });
+});
+// ─── Section N: Windsurf .devin canonical workspace dir (#1085) ─────────────
+// allow-test-rule: runtime-contract-is-the-product
+// Reads deployed skill .md files whose text IS the product surface the
+// Windsurf/Devin Desktop runtime loads at startup (path references, command names).
+
+describe('windsurf local install writes to .devin/ canonical dir (#1085)', () => {
+  let tmpDir;
+  let previousCwd;
+
+  beforeEach(() => {
+    tmpDir = createTempDir('gsd-windsurf-1085-');
+    previousCwd = process.cwd();
+    process.chdir(tmpDir);
+  });
+
+  afterEach(() => {
+    process.chdir(previousCwd);
+    cleanup(tmpDir);
+  });
+
+  test('install writes workspace skills under .devin/skills/', () => {
+    const result = install(false, 'windsurf');
+    const devinDir = path.join(tmpDir, '.devin');
+    assert.strictEqual(result.runtime, 'windsurf');
+    assert.ok(fs.existsSync(devinDir), '.devin/ must be created for local windsurf install');
+    const skillsDir = path.join(devinDir, 'skills');
+    assert.ok(fs.existsSync(skillsDir), '.devin/skills/ must exist after install');
+    const skillEntries = fs.readdirSync(skillsDir, { withFileTypes: true })
+      .filter(e => e.isDirectory() && e.name.startsWith('gsd-'));
+    assert.ok(skillEntries.length > 0, 'at least one gsd-* skill must be installed under .devin/skills/');
+    const firstSkill = path.join(skillsDir, skillEntries[0].name, 'SKILL.md');
+    assert.ok(fs.existsSync(firstSkill), `SKILL.md must exist at ${firstSkill}`);
+  });
+
+  test('legacy .windsurf/ is NOT written on a fresh local install', () => {
+    install(false, 'windsurf');
+    const legacyDir = path.join(tmpDir, '.windsurf');
+    assert.ok(!fs.existsSync(legacyDir),
+      '.windsurf/ must not be created by a fresh install (new installs use .devin/)');
+  });
+
+  test('installed skill content references .devin/ not bare .windsurf/ or ~/.claude/', () => {
+    install(false, 'windsurf');
+    const skillsDir = path.join(tmpDir, '.devin', 'skills');
+    const skillEntries = fs.readdirSync(skillsDir, { withFileTypes: true })
+      .filter(e => e.isDirectory() && e.name.startsWith('gsd-'));
+    assert.ok(skillEntries.length > 0, 'pre-condition: at least one gsd-* skill must be installed');
+    for (const skillEntry of skillEntries) {
+      const skillFile = path.join(skillsDir, skillEntry.name, 'SKILL.md');
+      if (!fs.existsSync(skillFile)) continue;
+      const content = fs.readFileSync(skillFile, 'utf8');
+      assert.ok(
+        !content.includes('~/.claude/') && !content.includes('$HOME/.claude/'),
+        `${skillEntry.name}/SKILL.md must not contain ~/.claude/ or $HOME/.claude/ in a local install`,
+      );
+      // Local install must use workspace-relative .devin/ form, not the legacy .windsurf/ form
+      assert.ok(
+        !content.includes('~/.windsurf/') && !content.includes('.windsurf/skills/'),
+        `${skillEntry.name}/SKILL.md must not contain bare .windsurf/ path in a local install (use .devin/ instead)`,
+      );
+    }
+  });
+
+  test('global windsurf install still writes to ~/.codeium/windsurf/ (unchanged)', () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-ws-global-'));
+    const savedHome = process.env.HOME;
+    const savedUserProfile = process.env.USERPROFILE;
+    const savedWindsurfConfig = process.env.WINDSURF_CONFIG_DIR;
+    delete process.env.WINDSURF_CONFIG_DIR;
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    try {
+      const result = install(true, 'windsurf');
+      assert.strictEqual(result.runtime, 'windsurf');
+      assert.ok(
+        result.configDir.includes('codeium') || result.configDir.includes('windsurf'),
+        `global windsurf install must go to codeium/windsurf path, got: ${result.configDir}`,
+      );
+      assert.ok(
+        fs.existsSync(path.join(result.configDir, 'skills')),
+        'global windsurf install must create skills/ under ~/.codeium/windsurf',
+      );
+      assert.ok(
+        !fs.existsSync(path.join(homeDir, '.devin')),
+        '.devin/ must NOT be created by a global install (global path is ~/.codeium/windsurf)',
+      );
+    } finally {
+      if (savedHome === undefined) delete process.env.HOME;
+      else process.env.HOME = savedHome;
+      if (savedUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = savedUserProfile;
+      if (savedWindsurfConfig === undefined) delete process.env.WINDSURF_CONFIG_DIR;
+      else process.env.WINDSURF_CONFIG_DIR = savedWindsurfConfig;
+      cleanup(homeDir);
+    }
+  });
+
+  test('global windsurf install skill content references codeium path not .devin/', () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-ws-global-c-'));
+    const savedHome = process.env.HOME;
+    const savedUserProfile = process.env.USERPROFILE;
+    const savedWindsurfConfig = process.env.WINDSURF_CONFIG_DIR;
+    delete process.env.WINDSURF_CONFIG_DIR;
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    try {
+      const result = install(true, 'windsurf');
+      const skillsDir = path.join(result.configDir, 'skills');
+      if (!fs.existsSync(skillsDir)) return; // no skills emitted — skip
+      const skillEntries = fs.readdirSync(skillsDir, { withFileTypes: true })
+        .filter(e => e.isDirectory() && e.name.startsWith('gsd-'));
+      // At least one skill body must reference the codeium/windsurf global path (#1085):
+      // the isGlobal-threaded rewrite converts .devin/skills/ → $HOME/.codeium/windsurf/skills/
+      let foundGlobalRef = false;
+      for (const skillEntry of skillEntries) {
+        const skillFile = path.join(skillsDir, skillEntry.name, 'SKILL.md');
+        if (!fs.existsSync(skillFile)) continue;
+        const content = fs.readFileSync(skillFile, 'utf8');
+        // Global skill content must not reference local workspace-relative .devin/ paths
+        assert.ok(
+          !content.includes('.devin/skills/'),
+          `${skillEntry.name}/SKILL.md must not reference .devin/skills/ in global install (should use codeium path)`,
+        );
+        assert.ok(
+          !content.includes('~/.claude/') && !content.includes('$HOME/.claude/'),
+          `${skillEntry.name}/SKILL.md must not contain ~/.claude/ or $HOME/.claude/ in global install`,
+        );
+        if (content.includes('codeium/windsurf/skills/') || content.includes('$HOME/.codeium/windsurf/skills/')) {
+          foundGlobalRef = true;
+        }
+      }
+      // Verify the global-path rewrite actually fired on at least one skill (FIX 1 guard)
+      if (skillEntries.some(e => fs.existsSync(path.join(skillsDir, e.name, 'SKILL.md')))) {
+        assert.ok(
+          foundGlobalRef,
+          'at least one global windsurf SKILL.md must reference the codeium/windsurf/skills/ path (isGlobal rewrite must have fired)',
+        );
+      }
+    } finally {
+      if (savedHome === undefined) delete process.env.HOME;
+      else process.env.HOME = savedHome;
+      if (savedUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = savedUserProfile;
+      if (savedWindsurfConfig === undefined) delete process.env.WINDSURF_CONFIG_DIR;
+      else process.env.WINDSURF_CONFIG_DIR = savedWindsurfConfig;
+      cleanup(homeDir);
+    }
+  });
+});
+// ─── Section N+1: #767 — disallowedTools injection for read-only agents ──────
+//
+// Verifies (installer-behavioral test — drives install() to a temp dir):
+//   1. Claude install: Group A agents have disallowedTools == {Write, Edit, MultiEdit} exactly.
+//   2. Claude install: Group B agents have disallowedTools == {Edit, MultiEdit} exactly.
+//   3. Negative: gsd-nyquist-auditor has NO disallowedTools key (legitimately writes+edits).
+//   4. Cross-runtime no-leak: Gemini-installed read-only agents do NOT contain disallowedTools.
+//   5. Source purity: source agents/*.md must not contain disallowedTools (inject-only).
+//   6. Parity: docs/AGENTS.md "Disallowed Tools" rows match READONLY_AGENT_DISALLOWED_TOOLS.
+//      (DEFECT.GENERATIVE-FIX guard)
+
+// #767 — must mirror READONLY_AGENT_DISALLOWED_TOOLS in bin/install.js.
+// If you change the map there, update this too (the parity test will catch drift).
+const READONLY_AGENT_DISALLOWED_TOOLS_767 = {
+  'gsd-plan-checker': 'Write, Edit, MultiEdit',
+  'gsd-integration-checker': 'Write, Edit, MultiEdit',
+  'gsd-ui-checker': 'Write, Edit, MultiEdit',
+  'gsd-verifier': 'Edit, MultiEdit',
+  'gsd-doc-verifier': 'Edit, MultiEdit',
+  'gsd-eval-auditor': 'Edit, MultiEdit',
+  'gsd-ui-auditor': 'Edit, MultiEdit',
+};
+
+const GROUP_A_767 = ['gsd-plan-checker', 'gsd-integration-checker', 'gsd-ui-checker'];
+const GROUP_B_767 = ['gsd-verifier', 'gsd-doc-verifier', 'gsd-eval-auditor', 'gsd-ui-auditor'];
+
+const REPO_ROOT_767 = path.resolve(__dirname, '..');
+const SOURCE_AGENTS_DIR_767 = path.join(REPO_ROOT_767, 'agents');
+const AGENTS_DOC_PATH_767 = path.join(REPO_ROOT_767, 'docs', 'AGENTS.md');
+
+function readFrontmatterText(mdPath) {
+  const content = fs.readFileSync(mdPath, 'utf8');
+  if (!content.startsWith('---')) return '';
+  const end = content.indexOf('---', 3);
+  if (end === -1) return '';
+  return content.substring(3, end);
+}
+
+function parseDisallowedToolsSet(fm) {
+  const match = fm.match(/^disallowedTools:\s*(.+)$/m);
+  if (!match) return null;
+  return new Set(match[1].split(',').map((t) => t.trim()).filter(Boolean));
+}
+
+/**
+ * Run a global install for the given runtime, redirecting its home dir to
+ * tmpHome. Stubs both HOME and USERPROFILE for Windows parity, and
+ * suppresses the stale-SDK npm subprocess.
+ */
+function runGlobalInstall767(runtime, tmpHome) {
+  const envVarMap = {
+    claude: 'CLAUDE_CONFIG_DIR',
+    gemini: 'GEMINI_CONFIG_DIR',
+    qwen: 'QWEN_CONFIG_DIR',
+  };
+  const envVar = envVarMap[runtime];
+  if (!envVar) throw new Error(`Unsupported runtime in #767 test: ${runtime}`);
+
+  const isolatedHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-767-home-'));
+
+  const prevEnvVar = process.env[envVar];
+  const prevCwd = process.cwd();
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  const prevSkipStale = process.env.GSD_SKIP_STALE_SDK_CHECK;
+
+  process.env[envVar] = tmpHome;
+  process.env.HOME = isolatedHome;
+  process.env.USERPROFILE = isolatedHome;
+  process.env.GSD_SKIP_STALE_SDK_CHECK = '1';
+  process.chdir(REPO_ROOT_767);
+
+  try {
+    install(true, runtime);
+  } finally {
+    process.chdir(prevCwd);
+    if (prevEnvVar === undefined) delete process.env[envVar];
+    else process.env[envVar] = prevEnvVar;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = prevUserProfile;
+    if (prevSkipStale === undefined) delete process.env.GSD_SKIP_STALE_SDK_CHECK;
+    else process.env.GSD_SKIP_STALE_SDK_CHECK = prevSkipStale;
+    cleanup(isolatedHome);
+  }
+
+  return tmpHome;
+}
+
+describe('#767 Claude install: Group A agents have disallowedTools = {Write, Edit, MultiEdit}', () => {
+  let tmpDir;
+  let claudeHome;
+
+  beforeEach(() => {
+    tmpDir = createTempDir('gsd-767-claude-a-');
+    claudeHome = path.join(tmpDir, 'claude-home');
+    fs.mkdirSync(claudeHome, { recursive: true });
+    runGlobalInstall767('claude', claudeHome);
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  const EXPECTED_A_767 = new Set(['Write', 'Edit', 'MultiEdit']);
+
+  for (const agent of GROUP_A_767) {
+    test(`${agent}: disallowedTools is exactly {Write, Edit, MultiEdit}`, () => {
+      const fm = readFrontmatterText(path.join(claudeHome, 'agents', `${agent}.md`));
+      const tools = parseDisallowedToolsSet(fm);
+      assert.ok(tools !== null,
+        `${agent} must have a disallowedTools key in Claude frontmatter\nFrontmatter:\n${fm}`);
+      assert.deepEqual(tools, EXPECTED_A_767,
+        `${agent} disallowedTools must be exactly {Write, Edit, MultiEdit}\nGot: ${[...tools].join(', ')}`);
+    });
+  }
+});
+
+describe('#767 Claude install: Group B agents have disallowedTools = {Edit, MultiEdit}', () => {
+  let tmpDir;
+  let claudeHome;
+
+  beforeEach(() => {
+    tmpDir = createTempDir('gsd-767-claude-b-');
+    claudeHome = path.join(tmpDir, 'claude-home');
+    fs.mkdirSync(claudeHome, { recursive: true });
+    runGlobalInstall767('claude', claudeHome);
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  const EXPECTED_B_767 = new Set(['Edit', 'MultiEdit']);
+
+  for (const agent of GROUP_B_767) {
+    test(`${agent}: disallowedTools is exactly {Edit, MultiEdit}`, () => {
+      const fm = readFrontmatterText(path.join(claudeHome, 'agents', `${agent}.md`));
+      const tools = parseDisallowedToolsSet(fm);
+      assert.ok(tools !== null,
+        `${agent} must have a disallowedTools key in Claude frontmatter\nFrontmatter:\n${fm}`);
+      assert.deepEqual(tools, EXPECTED_B_767,
+        `${agent} disallowedTools must be exactly {Edit, MultiEdit}\nGot: ${[...tools].join(', ')}`);
+    });
+  }
+});
+
+describe('#767 Claude install: gsd-nyquist-auditor has no disallowedTools (legitimately writes+edits)', () => {
+  let tmpDir;
+  let claudeHome;
+
+  beforeEach(() => {
+    tmpDir = createTempDir('gsd-767-claude-nyquist-');
+    claudeHome = path.join(tmpDir, 'claude-home');
+    fs.mkdirSync(claudeHome, { recursive: true });
+    runGlobalInstall767('claude', claudeHome);
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('gsd-nyquist-auditor.md has NO disallowedTools key', () => {
+    const fm = readFrontmatterText(path.join(claudeHome, 'agents', 'gsd-nyquist-auditor.md'));
+    const tools = parseDisallowedToolsSet(fm);
+    assert.equal(tools, null,
+      `gsd-nyquist-auditor must NOT have disallowedTools in Claude frontmatter\nFrontmatter:\n${fm}`);
+  });
+});
+
+describe('#767 Gemini install: read-only agents do NOT contain disallowedTools (cross-runtime leak guard)', () => {
+  let tmpDir;
+  let geminiHome;
+
+  beforeEach(() => {
+    tmpDir = createTempDir('gsd-767-gemini-');
+    geminiHome = path.join(tmpDir, 'gemini-home');
+    fs.mkdirSync(geminiHome, { recursive: true });
+    runGlobalInstall767('gemini', geminiHome);
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  for (const agent of [...GROUP_A_767, ...GROUP_B_767]) {
+    test(`Gemini ${agent}.md has no disallowedTools`, () => {
+      const agentPath = path.join(geminiHome, 'agents', `${agent}.md`);
+      const content = fs.readFileSync(agentPath, 'utf8');
+      assert.ok(!content.includes('disallowedTools'),
+        `${agent} (Gemini) must NOT contain disallowedTools\nContent excerpt:\n${content.slice(0, 400)}`);
+    });
+  }
+});
+
+describe('#767 Source purity: source agents/*.md must not contain disallowedTools (inject-only)', () => {
+  for (const agent of [...GROUP_A_767, ...GROUP_B_767]) {
+    test(`source agents/${agent}.md has no disallowedTools`, () => {
+      const content = fs.readFileSync(path.join(SOURCE_AGENTS_DIR_767, `${agent}.md`), 'utf8');
+      assert.ok(!content.includes('disallowedTools'),
+        `Source agents/${agent}.md must NOT contain disallowedTools (injection is install-time only, source must stay runtime-neutral)`);
+    });
+  }
+});
+
+describe('#767 Parity: docs/AGENTS.md "Disallowed Tools" rows match READONLY_AGENT_DISALLOWED_TOOLS', () => {
+  const agentsDoc = fs.readFileSync(AGENTS_DOC_PATH_767, 'utf8');
+
+  for (const [agent, expectedTools] of Object.entries(READONLY_AGENT_DISALLOWED_TOOLS_767)) {
+    test(`docs/AGENTS.md has matching Disallowed Tools row for ${agent}`, () => {
+      const agentHeaderIdx = agentsDoc.indexOf(`### ${agent}`);
+      assert.ok(agentHeaderIdx !== -1,
+        `docs/AGENTS.md must contain a ### ${agent} section`);
+
+      const nextSectionIdx = agentsDoc.indexOf('\n### ', agentHeaderIdx + 1);
+      const sectionEnd = nextSectionIdx === -1 ? agentsDoc.length : nextSectionIdx;
+      const section = agentsDoc.slice(agentHeaderIdx, sectionEnd);
+
+      const disallowedMatch = section.match(/\|\s*\*\*Disallowed Tools\*\*\s*\|\s*([^|]+)\|/);
+      assert.ok(disallowedMatch,
+        `docs/AGENTS.md section for ${agent} must have a "Disallowed Tools" table row`);
+
+      const docTools = disallowedMatch[1].trim();
+      assert.equal(docTools, expectedTools,
+        `docs/AGENTS.md "Disallowed Tools" for ${agent} must be "${expectedTools}" but got "${docTools}"`);
+    });
+  }
 });

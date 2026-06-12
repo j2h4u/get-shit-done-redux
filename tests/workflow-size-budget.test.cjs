@@ -66,10 +66,12 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('node:os');
 const path = require('path');
-const { assertTightCeiling } = require('../scripts/lib/allowlist-ratchet.cjs');
+const { assertTightCeiling, assertFileBaseline } = require('../scripts/lib/allowlist-ratchet.cjs');
+const { lfByteCount: byteCount, measureWorkflows } = require('../scripts/workflow-size.cjs');
 const { cleanup } = require('./helpers.cjs');
 
 const WORKFLOWS_DIR = path.join(__dirname, '..', 'gsd-core', 'workflows');
+const BASELINE_PATH = path.join(__dirname, 'workflow-size-baseline.json');
 
 // Grace band: maximum allowed slack (ceiling − actualMax) in BYTES before a
 // ceiling is considered too loose. 3000 bytes ≈ the prior 60-line grace
@@ -81,9 +83,10 @@ const GRACE = 3000;
 // current high-water mark within GRACE (#597 tighten-only ratchet).
 // XL high-water mark is execute-phase.md — note that under LINES it was
 // plan-phase; bytes genuinely re-rank the tier, which is the point of #717.
-// actualMax=92525 (execute-phase, #913 inline-fallback scope clarification);
-// slack=475 ≤ GRACE. plan-phase.md=90748 (#922 attempt-based Agent gate), new-project.md=58110.
-const XL_BUDGET = 93000;
+// actualMax=93130 (plan-phase, #381 CLAUDE_ENV_FILE persist clause in per-file launcher preamble);
+// slack=70 ≤ GRACE. execute-phase.md=92880, new-project.md=61685.
+// 93200: +200B headroom for the #381 CLAUDE_ENV_FILE persist clause added to every per-file launcher preamble (legit content growth, ratchet-up per #717).
+const XL_BUDGET = 93200;
 // LARGE high-water mark is docs-update.md. actualMax=54410 (#891 launcher shim expansion);
 // slack=1590 ≤ GRACE. quick.md=45710, autonomous.md=38030.
 const LARGE_BUDGET = 56000;
@@ -95,9 +98,9 @@ const DEFAULT_BUDGET = 40000;
 // Grandfathered at current sizes — see PR #2551 for the progressive-disclosure
 // pattern that future shrinks should follow. Byte counts noted for reference.
 const XL_WORKFLOWS = new Set([
-  'execute-phase',  // 92525 bytes (tier high-water mark; grew in #913 inline-fallback scope clarification)
-  'plan-phase',     // 90748 bytes (grew in #922 attempt-based Agent gate)
-  'new-project',    // 55850 bytes
+  'execute-phase',  // 92880 bytes (grew in #381 CLAUDE_ENV_FILE persist clause)
+  'plan-phase',     // 93130 bytes (tier high-water mark; grew in #381 CLAUDE_ENV_FILE persist clause)
+  'new-project',    // 61685 bytes
 ]);
 
 // Multi-step planners and bigger feature workflows. Grandfathered.
@@ -126,18 +129,10 @@ function budgetFor(workflow) {
   return { tier: 'DEFAULT', limit: DEFAULT_BUDGET };
 }
 
-function byteCount(filePath) {
-  // Count bytes as on an LF checkout, so the budget is platform-independent.
-  // The tier ceilings are calibrated against `wc -c` on a Unix (LF) checkout,
-  // but these .md files have no `eol=lf` in .gitattributes, so Windows checks
-  // them out as CRLF. Counting raw on-disk bytes there adds one byte per line,
-  // which fails CI on the high-water-mark file (execute-phase.md) on Windows
-  // ONLY — a false positive that diverges from the LF calibration basis (#683).
-  // Stripping CR yields the same LF byte count on every platform. Still a raw
-  // byte count (not the old trailing-newline-stripping lineCount()).
-  const content = fs.readFileSync(filePath, 'utf-8');
-  return Buffer.byteLength(content.replace(/\r\n/g, '\n'), 'utf-8');
-}
+// byteCount (LF-normalized, #683) is imported as `lfByteCount` from
+// scripts/workflow-size.cjs — the single source of truth shared with the
+// baseline generator so the guard and the snapshot can never measure
+// differently. See the #683 regression test at the bottom of this file.
 
 describe('SIZE: workflow byte-size budget', () => {
   for (const workflow of ALL_WORKFLOWS) {
@@ -156,6 +151,31 @@ describe('SIZE: workflow byte-size budget', () => {
       );
     });
   }
+});
+
+describe('SIZE: per-file workflow baseline (issue #1074)', () => {
+  // Per-file exact-size ratchet. Unlike the tier anti-creep block below — which
+  // only binds the single largest file in each tier — this guards EVERY
+  // workflow file by name against a committed snapshot
+  // (tests/workflow-size-baseline.json). Growth fails with the file and delta;
+  // shrinkage fails as a stale snapshot (regenerate to ratchet down). The fix
+  // for any failure is `npm run size:baseline` plus a PR justification for
+  // genuine growth (or lazy extraction). Runs side-by-side with the tier tests
+  // during the #1074 migration; the tier anti-creep block is removed in a
+  // follow-up once this is established.
+  test('every workflow file matches its committed baseline', () => {
+    const baseline = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf-8'));
+    const current = measureWorkflows();
+    assertFileBaseline({
+      label: 'workflow-size',
+      current,
+      baseline,
+      fail: assert.fail,
+      updateHint:
+        'Run `npm run size:baseline` to update tests/workflow-size-baseline.json, ' +
+        'then justify any growth in your PR (or extract content lazily — see workflows/discuss-phase/).',
+    });
+  });
 });
 
 describe('SIZE: tier anti-creep (tighten-only ceilings, issue #597)', () => {

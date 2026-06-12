@@ -95,6 +95,7 @@ export default tseslint.config(
       'gsd-core/bin/lib/planning-workspace.cjs',
       'gsd-core/bin/lib/runtime-artifact-layout.cjs',
       'gsd-core/bin/lib/runtime-config-adapter-registry.cjs',
+      'gsd-core/bin/lib/runtime-hooks-surface.cjs',
       'gsd-core/bin/lib/command-routing-hub.cjs',
       'gsd-core/bin/lib/core.cjs',
       'gsd-core/bin/lib/core-utils.cjs',
@@ -137,6 +138,7 @@ export default tseslint.config(
       'gsd-core/bin/lib/profile-pipeline.cjs',
       'gsd-core/bin/lib/template.cjs',
       'gsd-core/bin/lib/uat.cjs',
+      'gsd-core/bin/lib/uat-predicate.cjs',
       'gsd-core/bin/lib/workstream.cjs',
       'gsd-core/bin/lib/roadmap.cjs',
       'gsd-core/bin/lib/audit.cjs',
@@ -194,6 +196,7 @@ export default tseslint.config(
       'no-unsafe-finally': 'warn',
       // eslint-plugin-n rules
       'n/no-process-exit': 'error',
+      'n/no-path-concat': 'error',
       // Local rules — warn for now; flip to error after cleanup phases
       'local/no-source-grep': 'warn',
     },

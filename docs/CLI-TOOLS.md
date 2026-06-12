@@ -118,6 +118,10 @@ node gsd-tools.cjs phase remove <phase> [--force]
 # Mark phase complete, update state + roadmap
 node gsd-tools.cjs phase complete <phase>
 
+# Evaluate HUMAN-UAT results for a phase (markdown-aware; ignores false-positive contexts)
+# Returns JSON: { passed, uat_files[], verification_files[], checks[], blockers[], policy }
+node gsd-tools.cjs phase uat-passed <phase> [--require-verification]
+
 # Index plans with waves and status
 node gsd-tools.cjs phase-plan-index <phase>
 
@@ -435,7 +439,7 @@ node gsd-tools.cjs worktree base-check
 node gsd-tools.cjs worktree set-baseref
 ```
 
-**`worktree base-check`** reads `worktree.baseRef` from `.claude/settings.local.json` (then `.claude/settings.json`) and compares the current `HEAD` SHA against `origin/HEAD`. The `shouldDegrade` field is `true` when the execute-phase orchestrator will fall back to sequential execution. Possible `reason` values:
+**`worktree base-check`** reads `worktree.baseRef` from a three-layer cascade — `.claude/settings.local.json`, then `.claude/settings.json`, then the user/global `settings.json` under `CLAUDE_CONFIG_DIR` (or `~/.claude`) — and compares the current `HEAD` SHA against `origin/HEAD`. Project-level settings take precedence over the user/global layer, so a machine-wide `worktree.baseRef:"head"` set via `/config` is honored when no project override exists. The `shouldDegrade` field is `true` when the execute-phase orchestrator will fall back to sequential execution. Possible `reason` values:
 
 | `reason` | `shouldDegrade` | Meaning |
 |---|---|---|

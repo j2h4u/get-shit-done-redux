@@ -39,6 +39,17 @@ const {
   PROFILE_RANK,
   // ADR-959
   validateCommandEntry,
+  // ADR-857 phase 5e
+  VALID_CONVERTER_NAMES,
+  validateArtifactKindEntry,
+  runConfigFormatParityGate,
+  INSTALL_SURFACE_TO_CONFIG_FORMAT,
+  // ADR-857 phase 5f: cross-field consistency gates
+  INSTALL_SURFACE_TO_ALLOWED_HOOKS_SURFACES,
+  VALID_INSTALL_SURFACES,
+  VALID_EXTENDED_HOOK_EVENTS,
+  VALID_PERMISSION_WRITERS,
+  validateRuntimeBody,
 } = require('../scripts/gen-capability-registry.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -1150,17 +1161,25 @@ describe('C2: cross-capability consumes satisfiability (global pass)', () => {
 // ─── 10. C3: role:runtime validation ─────────────────────────────────────────
 
 describe('C3: role:runtime body validation', () => {
+  // ADR-1016 phase 5a: fixture updated to match tightened structured-value shapes.
+  // configHome is now an object (Decision 1), artifactLayout is { global, local } (Decision 3),
+  // commandStyle is closed enum (Decision 4), hooksSurface is closed enum (Decision 5).
   const VALID_RUNTIME_CAP = {
     id: 'cursor', role: 'runtime', title: 'Cursor', description: 'Cursor IDE runtime',
     tier: 'standard', requires: [],
     runtime: {
-      configHome: '~/.cursor',
+      configHome: { kind: 'dot-home', name: '.cursor', env: ['CURSOR_CONFIG_DIR'] },
       configFormat: 'settings-json',
-      artifactLayout: [],
-      commandStyle: 'slash',
-      hooksSurface: 'rules',
+      artifactLayout: { global: [], local: [] },
+      commandStyle: 'slash-hyphen',
+      hooksSurface: 'cursor-hooks-json',
+      hookEvents: 'claude',
       sandboxTier: 'none',
       supportTier: 2,
+      installSurface: 'cursor-hooks-json',
+      writesSharedSettings: false,
+      permissionWriter: null,
+      extendedHookEvents: [],
     },
   };
 
@@ -2494,5 +2513,1216 @@ describe('ADR-959: validateCapability — commands field on feature role', () =>
     const cap = makeCommandCap('cmd-cap', null);
     const errors = validateCapability(cap, 'cmd-cap');
     assert.ok(errors.some((e) => e.includes('commands')), 'Expected commands error, got: ' + JSON.stringify(errors));
+  });
+});
+
+// ─── 24. ADR-1016 phase 5a: runtime capability descriptors ───────────────────
+
+const {
+  validateConfigHome,
+  validateArtifactLayout,
+  VALID_CONFIG_HOME_KINDS,
+  VALID_COMMAND_STYLES,
+  VALID_HOOKS_SURFACES,
+  VALID_HOOK_EVENTS,
+  VALID_SANDBOX_TIERS,
+  VALID_ARTIFACT_KIND_NAMES,
+  VALID_ARTIFACT_NESTINGS,
+} = require('../scripts/gen-capability-registry.cjs');
+
+const RUNTIME_IDS = [
+  'claude', 'codex', 'antigravity', 'gemini', 'cursor', 'opencode',
+  'kilo', 'copilot', 'augment', 'trae', 'qwen', 'hermes',
+  'codebuddy', 'cline', 'kimi', 'windsurf',
+];
+
+// Helper: build a minimal valid runtime capability object for fixture-based tests
+function makeRuntimeCap(overrides) {
+  return {
+    id: 'test-rt',
+    role: 'runtime',
+    title: 'Test Runtime',
+    description: 'A synthetic runtime capability for testing.',
+    tier: 'core',
+    requires: [],
+    runtime: {
+      configHome: { kind: 'dot-home', name: '.test-rt', env: ['TEST_RT_DIR'] },
+      configFormat: 'settings-json',
+      artifactLayout: { global: [], local: [] },
+      commandStyle: 'slash-hyphen',
+      hooksSurface: 'settings-json',
+      hookEvents: 'claude',
+      sandboxTier: 'none',
+      supportTier: 1,
+      installSurface: 'settings-json',
+      writesSharedSettings: true,
+      permissionWriter: null,
+      extendedHookEvents: [],
+      ...((overrides && overrides.runtime) ? overrides.runtime : {}),
+    },
+    ...overrides,
+  };
+}
+
+// ── 24a. All 16 runtime ids appear in the runtimes index ─────────────────────
+
+describe('ADR-1016 phase 5a: all 16 runtimes in registry index', () => {
+  let registry;
+
+  test('loadAndValidate + buildRegistry produces runtimes index with 16 entries', () => {
+    const { capMap, errors } = loadAndValidate(new Set());
+    const hardErrors = errors.filter((e) => !e.includes('pending-migration'));
+    assert.deepEqual(hardErrors, [], 'Expected no hard errors: ' + JSON.stringify(hardErrors));
+    registry = buildRegistry(capMap);
+    const runtimeKeys = Object.keys(registry.runtimes).sort();
+    assert.strictEqual(runtimeKeys.length, 16, 'Expected 16 runtime entries, got: ' + runtimeKeys.join(', '));
+    for (const id of RUNTIME_IDS) {
+      assert.ok(
+        Object.prototype.hasOwnProperty.call(registry.runtimes, id),
+        'runtimes index must contain "' + id + '"',
+      );
+    }
+  });
+
+  test('every runtimes entry has role: "runtime"', () => {
+    const { capMap } = loadAndValidate(new Set());
+    registry = buildRegistry(capMap);
+    for (const id of RUNTIME_IDS) {
+      assert.strictEqual(
+        registry.runtimes[id] && registry.runtimes[id].role, 'runtime',
+        'runtimes["' + id + '"].role must be "runtime"',
+      );
+    }
+  });
+
+  test('every runtimes entry has all 6 axes present in runtime object', () => {
+    const { capMap } = loadAndValidate(new Set());
+    registry = buildRegistry(capMap);
+    const requiredAxes = ['configHome', 'configFormat', 'artifactLayout', 'commandStyle', 'hooksSurface', 'sandboxTier'];
+    for (const id of RUNTIME_IDS) {
+      const rt = registry.runtimes[id] && registry.runtimes[id].runtime;
+      assert.ok(rt, 'runtimes["' + id + '"].runtime must exist');
+      for (const axis of requiredAxes) {
+        assert.ok(
+          Object.prototype.hasOwnProperty.call(rt, axis),
+          'runtimes["' + id + '"].runtime.' + axis + ' must be present',
+        );
+      }
+      // supportTier also required
+      assert.ok(
+        rt.supportTier === 1 || rt.supportTier === 2,
+        'runtimes["' + id + '"].runtime.supportTier must be 1 or 2 (got: ' + rt.supportTier + ')',
+      );
+    }
+  });
+});
+
+// ── 24b. Sample axis value assertions ────────────────────────────────────────
+
+describe('ADR-1016 phase 5a: sample axis value assertions', () => {
+  test('codex: commandStyle === shell-var and sandboxTier === codex-agent-sandbox', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    const rt = registry.runtimes['codex'].runtime;
+    assert.strictEqual(rt.commandStyle, 'shell-var', 'codex.commandStyle must be "shell-var"');
+    assert.strictEqual(rt.sandboxTier, 'codex-agent-sandbox', 'codex.sandboxTier must be "codex-agent-sandbox"');
+  });
+
+  test('codex: configHome.kind === dot-home, name === .codex', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    const rt = registry.runtimes['codex'].runtime;
+    assert.strictEqual(rt.configHome.kind, 'dot-home', 'codex.configHome.kind must be "dot-home"');
+    assert.strictEqual(rt.configHome.name, '.codex', 'codex.configHome.name must be ".codex"');
+    assert.ok(Array.isArray(rt.configHome.env) && rt.configHome.env.includes('CODEX_HOME'),
+      'codex.configHome.env must include "CODEX_HOME"');
+  });
+
+  test('claude: commandStyle === slash-hyphen, sandboxTier === none', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    const rt = registry.runtimes['claude'].runtime;
+    assert.strictEqual(rt.commandStyle, 'slash-hyphen', 'claude.commandStyle must be "slash-hyphen"');
+    assert.strictEqual(rt.sandboxTier, 'none', 'claude.sandboxTier must be "none"');
+  });
+
+  test('claude: configHome.kind === dot-home', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    const rt = registry.runtimes['claude'].runtime;
+    assert.strictEqual(rt.configHome.kind, 'dot-home', 'claude.configHome.kind must be "dot-home"');
+  });
+
+  test('antigravity: configHome.kind === dot-home-nested with parent .gemini', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    const rt = registry.runtimes['antigravity'].runtime;
+    assert.strictEqual(rt.configHome.kind, 'dot-home-nested', 'antigravity.configHome.kind must be "dot-home-nested"');
+    assert.strictEqual(rt.configHome.parent, '.gemini', 'antigravity.configHome.parent must be ".gemini"');
+    assert.ok(Array.isArray(rt.configHome.probe), 'antigravity.configHome.probe must be an array');
+    assert.ok(rt.configHome.probe.length > 0, 'antigravity.configHome.probe must be non-empty');
+  });
+
+  test('kilo: configHome.skillsHome is present', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    const rt = registry.runtimes['kilo'].runtime;
+    assert.ok(rt.configHome.skillsHome, 'kilo.configHome.skillsHome must be present');
+    assert.ok(typeof rt.configHome.skillsHome.kind === 'string', 'kilo.configHome.skillsHome.kind must be a string');
+  });
+
+  test('windsurf: configHome.kind === dot-home-nested with parent .codeium', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    const rt = registry.runtimes['windsurf'].runtime;
+    assert.strictEqual(rt.configHome.kind, 'dot-home-nested', 'windsurf.configHome.kind must be "dot-home-nested"');
+    assert.strictEqual(rt.configHome.parent, '.codeium', 'windsurf.configHome.parent must be ".codeium"');
+  });
+
+  test('kimi: configHome.kind === generic-agents-root', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    const rt = registry.runtimes['kimi'].runtime;
+    assert.strictEqual(rt.configHome.kind, 'generic-agents-root', 'kimi.configHome.kind must be "generic-agents-root"');
+  });
+
+  test('antigravity: hookEvents === gemini', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    const rt = registry.runtimes['antigravity'].runtime;
+    assert.strictEqual(rt.hookEvents, 'gemini', 'antigravity.hookEvents must be "gemini"');
+  });
+
+  test('opencode: hooksSurface === none, no hookEvents (registers zero lifecycle hooks)', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    const rt = registry.runtimes['opencode'].runtime;
+    assert.strictEqual(rt.hooksSurface, 'none', 'opencode.hooksSurface must be "none" (no managed lifecycle hooks)');
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(rt, 'hookEvents'),
+      'opencode.runtime must NOT have hookEvents (no lifecycle hook registration)',
+    );
+  });
+
+  test('kilo: hooksSurface === none, no hookEvents (registers zero lifecycle hooks)', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    const rt = registry.runtimes['kilo'].runtime;
+    assert.strictEqual(rt.hooksSurface, 'none', 'kilo.hooksSurface must be "none" (no managed lifecycle hooks)');
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(rt, 'hookEvents'),
+      'kilo.runtime must NOT have hookEvents (no lifecycle hook registration)',
+    );
+  });
+
+  test('kimi: configHome.probeExists === "skills" (probe selects first candidate with skills/ dir)', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    const rt = registry.runtimes['kimi'].runtime;
+    assert.strictEqual(
+      rt.configHome.probeExists, 'skills',
+      'kimi.configHome.probeExists must be "skills" (selects first probe candidate where <candidate>/skills exists)',
+    );
+  });
+
+  test('copilot/trae/kimi/windsurf/cline/opencode/kilo: hooksSurface none or copilot-inline/cline-rules, no hookEvents', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    // opencode and kilo register ZERO lifecycle hooks → hooksSurface none, no hookEvents
+    const noEventsRuntimes = ['trae', 'kimi', 'windsurf', 'opencode', 'kilo'];
+    for (const id of noEventsRuntimes) {
+      const rt = registry.runtimes[id].runtime;
+      assert.ok(
+        !Object.prototype.hasOwnProperty.call(rt, 'hookEvents'),
+        id + '.runtime must NOT have hookEvents (no hook events for this runtime)',
+      );
+    }
+    // cline has cline-rules surface but no hookEvents
+    const clineRt = registry.runtimes['cline'].runtime;
+    assert.strictEqual(clineRt.hooksSurface, 'cline-rules', 'cline.hooksSurface must be "cline-rules"');
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(clineRt, 'hookEvents'),
+      'cline.runtime must NOT have hookEvents',
+    );
+    // copilot has copilot-inline surface but no hookEvents
+    const copilotRt = registry.runtimes['copilot'].runtime;
+    assert.strictEqual(copilotRt.hooksSurface, 'copilot-inline', 'copilot.hooksSurface must be "copilot-inline"');
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(copilotRt, 'hookEvents'),
+      'copilot.runtime must NOT have hookEvents',
+    );
+  });
+
+  test('codex: hooksSurface === codex-hooks-json, cursor: hooksSurface === cursor-hooks-json', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    assert.strictEqual(registry.runtimes['codex'].runtime.hooksSurface, 'codex-hooks-json',
+      'codex.hooksSurface must be "codex-hooks-json"');
+    assert.strictEqual(registry.runtimes['cursor'].runtime.hooksSurface, 'cursor-hooks-json',
+      'cursor.hooksSurface must be "cursor-hooks-json"');
+  });
+
+  test('tier-1 runtimes: claude, codex, antigravity have supportTier === 1', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    for (const id of ['claude', 'codex', 'antigravity']) {
+      assert.strictEqual(
+        registry.runtimes[id].runtime.supportTier, 1,
+        id + '.runtime.supportTier must be 1 (tier-1 support)',
+      );
+    }
+  });
+
+  test('tier-2 runtimes: gemini through windsurf have supportTier === 2', () => {
+    const { capMap } = loadAndValidate(new Set());
+    const registry = buildRegistry(capMap);
+    const tier2 = ['gemini', 'cursor', 'opencode', 'kilo', 'copilot', 'augment', 'trae', 'qwen', 'hermes', 'codebuddy', 'cline', 'kimi', 'windsurf'];
+    for (const id of tier2) {
+      assert.strictEqual(
+        registry.runtimes[id].runtime.supportTier, 2,
+        id + '.runtime.supportTier must be 2 (tier-2 support)',
+      );
+    }
+  });
+});
+
+// ── 24c. Closed-vocab REJECTION tests ────────────────────────────────────────
+
+describe('ADR-1016 phase 5a: closed-vocab rejection — tightened validateRuntimeBody', () => {
+  test('bad configHome.kind → validation error', () => {
+    const cap = makeRuntimeCap({ id: 'test-rt', runtime: { configHome: { kind: 'custom-home', name: '.test', env: [] } } });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('configHome') && e.includes('kind')),
+      'Expected configHome.kind error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('configHome is a string (old shape) → validation error', () => {
+    const cap = makeRuntimeCap({ id: 'test-rt', runtime: { configHome: '~/.test-rt' } });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('configHome')),
+      'Expected configHome object error (string not accepted), got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('dot-home-nested without parent → validation error', () => {
+    const cap = makeRuntimeCap({ id: 'test-rt', runtime: { configHome: { kind: 'dot-home-nested', name: 'foo', env: [] } } });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('parent') && e.includes('dot-home-nested')),
+      'Expected parent required for dot-home-nested, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('bad commandStyle → validation error', () => {
+    const cap = makeRuntimeCap({ id: 'test-rt', runtime: { commandStyle: 'slash-colon' } });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('commandStyle')),
+      'Expected commandStyle error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('bad hooksSurface → validation error', () => {
+    const cap = makeRuntimeCap({ id: 'test-rt', runtime: { hooksSurface: 'custom-hooks' } });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('hooksSurface')),
+      'Expected hooksSurface error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('bad hookEvents → validation error', () => {
+    const cap = makeRuntimeCap({ id: 'test-rt', runtime: { hookEvents: 'my-dialect' } });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('hookEvents')),
+      'Expected hookEvents error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('bad sandboxTier → validation error', () => {
+    const cap = makeRuntimeCap({ id: 'test-rt', runtime: { sandboxTier: 'workspace-sandbox' } });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('sandboxTier')),
+      'Expected sandboxTier error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('artifactLayout is an array (old shape) → validation error', () => {
+    const cap = makeRuntimeCap({ id: 'test-rt', runtime: { artifactLayout: [] } });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('artifactLayout')),
+      'Expected artifactLayout shape error (old array not accepted), got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('bad ArtifactKind.kind in artifactLayout → validation error', () => {
+    const cap = makeRuntimeCap({
+      id: 'test-rt',
+      runtime: {
+        artifactLayout: {
+          global: [{ kind: 'magic-kind', destSubpath: 'x', prefix: 'g-', nesting: 'flat', recursive: false, converter: null }],
+          local: [],
+        },
+      },
+    });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('kind')),
+      'Expected ArtifactKind.kind error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('bad ArtifactKind.nesting → validation error', () => {
+    const cap = makeRuntimeCap({
+      id: 'test-rt',
+      runtime: {
+        artifactLayout: {
+          global: [{ kind: 'skills', destSubpath: 'skills', prefix: 'gsd-', nesting: 'deep', recursive: false, converter: null }],
+          local: [],
+        },
+      },
+    });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('nesting')),
+      'Expected nesting error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('valid runtime descriptor passes validateCapability with no errors', () => {
+    const cap = makeRuntimeCap({ id: 'test-rt' });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.deepEqual(errors, [], 'Expected no errors for valid runtime cap: ' + JSON.stringify(errors));
+  });
+});
+
+// ── 24d. validateConfigHome + validateArtifactLayout unit tests ───────────────
+
+describe('ADR-1016 phase 5a: validateConfigHome unit tests', () => {
+  test('valid dot-home with env → no errors', () => {
+    const errors = validateConfigHome('test', { kind: 'dot-home', name: '.test', env: ['TEST_DIR'] });
+    assert.deepEqual(errors, []);
+  });
+
+  test('valid dot-home-nested with parent → no errors', () => {
+    const errors = validateConfigHome('test', { kind: 'dot-home-nested', name: 'foo', parent: '.bar', env: [] });
+    assert.deepEqual(errors, []);
+  });
+
+  test('valid xdg → no errors', () => {
+    const errors = validateConfigHome('test', { kind: 'xdg', name: 'opencode', env: ['OPENCODE_CONFIG_DIR', 'XDG_CONFIG_HOME'] });
+    assert.deepEqual(errors, []);
+  });
+
+  test('valid generic-agents-root with probe → no errors', () => {
+    const errors = validateConfigHome('test', { kind: 'generic-agents-root', name: 'agents', env: ['KIMI_CONFIG_DIR'], probe: ['~/.config/agents'] });
+    assert.deepEqual(errors, []);
+  });
+
+  test('null configHome → error', () => {
+    const errors = validateConfigHome('test', null);
+    assert.ok(errors.length > 0 && errors.some((e) => e.includes('configHome')));
+  });
+
+  test('string configHome → error', () => {
+    const errors = validateConfigHome('test', '~/.test');
+    assert.ok(errors.length > 0 && errors.some((e) => e.includes('configHome')));
+  });
+
+  test('unknown kind → error mentioning the valid set', () => {
+    const errors = validateConfigHome('test', { kind: 'unknown', name: '.x', env: [] });
+    assert.ok(errors.some((e) => e.includes('kind') && e.includes('dot-home')),
+      'Error should list valid kinds, got: ' + JSON.stringify(errors));
+  });
+
+  test('dot-home-nested missing parent → error', () => {
+    const errors = validateConfigHome('test', { kind: 'dot-home-nested', name: 'x', env: [] });
+    assert.ok(errors.some((e) => e.includes('parent')));
+  });
+
+  test('skillsHome with valid kind → no errors', () => {
+    const errors = validateConfigHome('test', {
+      kind: 'xdg', name: 'kilo', env: [],
+      skillsHome: { kind: 'dot-home', name: '.kilo', env: [] },
+    });
+    assert.deepEqual(errors, []);
+  });
+
+  test('skillsHome with bad kind → error', () => {
+    const errors = validateConfigHome('test', {
+      kind: 'xdg', name: 'kilo', env: [],
+      skillsHome: { kind: 'exotic', name: '.kilo', env: [] },
+    });
+    assert.ok(errors.some((e) => e.includes('skillsHome') && e.includes('kind')));
+  });
+});
+
+describe('ADR-1016 phase 5a: validateArtifactLayout unit tests', () => {
+  test('valid empty global/local → no errors', () => {
+    const errors = validateArtifactLayout('test', { global: [], local: [] });
+    assert.deepEqual(errors, []);
+  });
+
+  test('valid skills entry in global → no errors', () => {
+    const errors = validateArtifactLayout('test', {
+      global: [{ kind: 'skills', destSubpath: 'skills', prefix: 'gsd-', nesting: 'flat', recursive: false, converter: null }],
+      local: [],
+    });
+    assert.deepEqual(errors, []);
+  });
+
+  test('array (old shape) → error', () => {
+    const errors = validateArtifactLayout('test', []);
+    assert.ok(errors.some((e) => e.includes('artifactLayout')));
+  });
+
+  test('missing global → error', () => {
+    const errors = validateArtifactLayout('test', { local: [] });
+    assert.ok(errors.some((e) => e.includes('global')));
+  });
+
+  test('missing local → error', () => {
+    const errors = validateArtifactLayout('test', { global: [] });
+    assert.ok(errors.some((e) => e.includes('local')));
+  });
+
+  test('bad kind in global[0] → error', () => {
+    const errors = validateArtifactLayout('test', {
+      global: [{ kind: 'bad-kind', destSubpath: 'x', prefix: '', nesting: 'flat', recursive: false, converter: null }],
+      local: [],
+    });
+    assert.ok(errors.some((e) => e.includes('kind')));
+  });
+
+  test('bad nesting in global[0] → error', () => {
+    const errors = validateArtifactLayout('test', {
+      global: [{ kind: 'skills', destSubpath: 'x', prefix: '', nesting: 'trilateral', recursive: false, converter: null }],
+      local: [],
+    });
+    assert.ok(errors.some((e) => e.includes('nesting')));
+  });
+
+  test('kimi-agents kind → no errors', () => {
+    const errors = validateArtifactLayout('test', {
+      global: [{ kind: 'kimi-agents', destSubpath: 'agents', prefix: 'gsd', nesting: 'flat', recursive: false, converter: null }],
+      local: [],
+    });
+    assert.deepEqual(errors, []);
+  });
+});
+
+// ── 24d-extra. FIX 3: tightened validateRuntimeBody / validateConfigHome ──────
+
+describe('FIX 3: tightened runtime validator — configHome.env required', () => {
+  test('configHome missing env → validation error', () => {
+    // env is now required; omitting it must produce an error
+    const cap = makeRuntimeCap({
+      id: 'test-rt',
+      runtime: { configHome: { kind: 'dot-home', name: '.test-rt' } },  // no env
+    });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('env') && (e.includes('required') || e.includes('array'))),
+      'Expected configHome.env required error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('configHome with env: [] (empty array) is accepted', () => {
+    const cap = makeRuntimeCap({
+      id: 'test-rt',
+      runtime: { configHome: { kind: 'dot-home', name: '.test-rt', env: [] } },
+    });
+    const errors = validateCapability(cap, 'test-rt');
+    const envErrors = errors.filter((e) => e.includes('env'));
+    assert.deepEqual(envErrors, [], 'Empty env array should be accepted, got: ' + JSON.stringify(envErrors));
+  });
+
+  test('configHome with env: null → validation error (not an array)', () => {
+    const cap = makeRuntimeCap({
+      id: 'test-rt',
+      runtime: { configHome: { kind: 'dot-home', name: '.test-rt', env: null } },
+    });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('env')),
+      'Expected env error for null, got: ' + JSON.stringify(errors),
+    );
+  });
+});
+
+describe('FIX 3: tightened runtime validator — skillsHome recursive validation', () => {
+  test('skillsHome with bad kind → validation error via full recursive check', () => {
+    const cap = makeRuntimeCap({
+      id: 'test-rt',
+      runtime: {
+        configHome: {
+          kind: 'xdg', name: 'test', env: [],
+          skillsHome: { kind: 'exotic-kind', name: '.test', env: [] },
+        },
+      },
+    });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('skillsHome') && e.includes('kind')),
+      'Expected skillsHome.kind error for exotic-kind, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('skillsHome missing env → validation error (env required in recursive check)', () => {
+    const cap = makeRuntimeCap({
+      id: 'test-rt',
+      runtime: {
+        configHome: {
+          kind: 'xdg', name: 'test', env: [],
+          skillsHome: { kind: 'dot-home', name: '.test' },  // no env
+        },
+      },
+    });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('skillsHome') && e.includes('env')),
+      'Expected skillsHome.env required error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('kilo descriptor: skillsHome passes full validation', () => {
+    // kilo has skillsHome: { kind: "dot-home", name: ".kilo", env: [] } — must pass
+    const { capMap, errors } = loadAndValidate(new Set());
+    const hardErrors = errors.filter((e) => !e.includes('pending-migration'));
+    assert.deepEqual(hardErrors, [], 'No hard errors expected for kilo, got: ' + JSON.stringify(hardErrors));
+    const kiloRt = capMap.get('kilo');
+    assert.ok(kiloRt, 'kilo must be in capMap');
+    assert.ok(kiloRt.runtime.configHome.skillsHome, 'kilo.configHome.skillsHome must be present');
+    assert.strictEqual(kiloRt.runtime.configHome.skillsHome.kind, 'dot-home');
+    assert.strictEqual(kiloRt.runtime.configHome.skillsHome.name, '.kilo');
+  });
+});
+
+describe('FIX 3: tightened runtime validator — ArtifactKind field type checks', () => {
+  test('ArtifactKind with recursive: "yes" (non-boolean) → validation error', () => {
+    const cap = makeRuntimeCap({
+      id: 'test-rt',
+      runtime: {
+        artifactLayout: {
+          global: [{ kind: 'skills', destSubpath: 'skills', prefix: 'gsd-', nesting: 'flat', recursive: 'yes', converter: null }],
+          local: [],
+        },
+      },
+    });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('recursive') && e.includes('boolean')),
+      'Expected recursive non-boolean error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('ArtifactKind with recursive: true (boolean) → no error', () => {
+    const cap = makeRuntimeCap({
+      id: 'test-rt',
+      runtime: {
+        artifactLayout: {
+          global: [{ kind: 'skills', destSubpath: 'skills', prefix: 'gsd-', nesting: 'flat', recursive: true, converter: null }],
+          local: [],
+        },
+      },
+    });
+    const errors = validateCapability(cap, 'test-rt');
+    const recursiveErrors = errors.filter((e) => e.includes('recursive'));
+    assert.deepEqual(recursiveErrors, [], 'recursive: true must be accepted, got: ' + JSON.stringify(recursiveErrors));
+  });
+
+  test('ArtifactKind with prefix: 42 (non-string) → validation error', () => {
+    const cap = makeRuntimeCap({
+      id: 'test-rt',
+      runtime: {
+        artifactLayout: {
+          global: [{ kind: 'skills', destSubpath: 'skills', prefix: 42, nesting: 'flat', recursive: false, converter: null }],
+          local: [],
+        },
+      },
+    });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('prefix') && e.includes('string')),
+      'Expected prefix non-string error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('ArtifactKind with converter: 123 (non-string, non-null) → validation error', () => {
+    const cap = makeRuntimeCap({
+      id: 'test-rt',
+      runtime: {
+        artifactLayout: {
+          global: [{ kind: 'skills', destSubpath: 'skills', prefix: 'gsd-', nesting: 'flat', recursive: false, converter: 123 }],
+          local: [],
+        },
+      },
+    });
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(
+      errors.some((e) => e.includes('converter') && (e.includes('string') || e.includes('null'))),
+      'Expected converter type error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('ArtifactKind with converter: null → no error', () => {
+    const cap = makeRuntimeCap({
+      id: 'test-rt',
+      runtime: {
+        artifactLayout: {
+          global: [{ kind: 'skills', destSubpath: 'skills', prefix: 'gsd-', nesting: 'flat', recursive: false, converter: null }],
+          local: [],
+        },
+      },
+    });
+    const errors = validateCapability(cap, 'test-rt');
+    const converterErrors = errors.filter((e) => e.includes('converter'));
+    assert.deepEqual(converterErrors, [], 'converter: null must be accepted, got: ' + JSON.stringify(converterErrors));
+  });
+
+  test('ArtifactKind with converter: "convertClaudeCommandToKiloSkill" (string) → no error', () => {
+    const cap = makeRuntimeCap({
+      id: 'test-rt',
+      runtime: {
+        artifactLayout: {
+          global: [{ kind: 'skills', destSubpath: 'skills', prefix: 'gsd-', nesting: 'flat', recursive: true, converter: 'convertClaudeCommandToKiloSkill' }],
+          local: [],
+        },
+      },
+    });
+    const errors = validateCapability(cap, 'test-rt');
+    const converterErrors = errors.filter((e) => e.includes('converter'));
+    assert.deepEqual(converterErrors, [], 'converter: string must be accepted, got: ' + JSON.stringify(converterErrors));
+  });
+});
+
+describe('FIX 3: tightened runtime validator — probeExists optional string', () => {
+  test('probeExists: "skills" is accepted', () => {
+    const errors = validateConfigHome('test', {
+      kind: 'generic-agents-root', name: 'agents', env: ['KIMI_CONFIG_DIR'],
+      probe: ['~/.config/agents', '~/.agents'],
+      probeExists: 'skills',
+    });
+    assert.deepEqual(errors, [], 'probeExists: "skills" must be accepted, got: ' + JSON.stringify(errors));
+  });
+
+  test('probeExists: "" (empty string) → error', () => {
+    const errors = validateConfigHome('test', {
+      kind: 'generic-agents-root', name: 'agents', env: [],
+      probeExists: '',
+    });
+    assert.ok(
+      errors.some((e) => e.includes('probeExists')),
+      'Expected probeExists empty string error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('probeExists: 42 (non-string) → error', () => {
+    const errors = validateConfigHome('test', {
+      kind: 'generic-agents-root', name: 'agents', env: [],
+      probeExists: 42,
+    });
+    assert.ok(
+      errors.some((e) => e.includes('probeExists')),
+      'Expected probeExists non-string error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('probeExists absent → no error (optional)', () => {
+    const errors = validateConfigHome('test', {
+      kind: 'generic-agents-root', name: 'agents', env: ['KIMI_CONFIG_DIR'],
+      probe: ['~/.config/agents'],
+    });
+    const probeExistsErrors = errors.filter((e) => e.includes('probeExists'));
+    assert.deepEqual(probeExistsErrors, [], 'probeExists is optional — no error when absent, got: ' + JSON.stringify(probeExistsErrors));
+  });
+});
+
+// ── 24e. Closed-vocab set exports are correct ─────────────────────────────────
+
+describe('ADR-1016 phase 5a: closed-vocab set exports', () => {
+  test('VALID_CONFIG_HOME_KINDS has exactly the 4 expected values', () => {
+    assert.ok(VALID_CONFIG_HOME_KINDS instanceof Set);
+    for (const v of ['dot-home', 'dot-home-nested', 'xdg', 'generic-agents-root']) {
+      assert.ok(VALID_CONFIG_HOME_KINDS.has(v), 'VALID_CONFIG_HOME_KINDS must contain "' + v + '"');
+    }
+    assert.strictEqual(VALID_CONFIG_HOME_KINDS.size, 4, 'VALID_CONFIG_HOME_KINDS must have exactly 4 members');
+  });
+
+  test('VALID_COMMAND_STYLES has exactly 2 values', () => {
+    assert.ok(VALID_COMMAND_STYLES instanceof Set);
+    assert.ok(VALID_COMMAND_STYLES.has('slash-hyphen'));
+    assert.ok(VALID_COMMAND_STYLES.has('shell-var'));
+    assert.strictEqual(VALID_COMMAND_STYLES.size, 2);
+  });
+
+  test('VALID_HOOKS_SURFACES has exactly 6 values', () => {
+    assert.ok(VALID_HOOKS_SURFACES instanceof Set);
+    for (const v of ['settings-json', 'codex-hooks-json', 'cursor-hooks-json', 'copilot-inline', 'cline-rules', 'none']) {
+      assert.ok(VALID_HOOKS_SURFACES.has(v), 'VALID_HOOKS_SURFACES must contain "' + v + '"');
+    }
+    assert.strictEqual(VALID_HOOKS_SURFACES.size, 6);
+  });
+
+  test('VALID_HOOK_EVENTS has exactly 3 values', () => {
+    assert.ok(VALID_HOOK_EVENTS instanceof Set);
+    for (const v of ['claude', 'gemini', 'opencode-subset']) {
+      assert.ok(VALID_HOOK_EVENTS.has(v), 'VALID_HOOK_EVENTS must contain "' + v + '"');
+    }
+    assert.strictEqual(VALID_HOOK_EVENTS.size, 3);
+  });
+
+  test('VALID_SANDBOX_TIERS has exactly 2 values', () => {
+    assert.ok(VALID_SANDBOX_TIERS instanceof Set);
+    assert.ok(VALID_SANDBOX_TIERS.has('none'));
+    assert.ok(VALID_SANDBOX_TIERS.has('codex-agent-sandbox'));
+    assert.strictEqual(VALID_SANDBOX_TIERS.size, 2);
+  });
+
+  test('VALID_ARTIFACT_KIND_NAMES has exactly 4 values', () => {
+    assert.ok(VALID_ARTIFACT_KIND_NAMES instanceof Set);
+    for (const v of ['commands', 'agents', 'skills', 'kimi-agents']) {
+      assert.ok(VALID_ARTIFACT_KIND_NAMES.has(v), 'VALID_ARTIFACT_KIND_NAMES must contain "' + v + '"');
+    }
+    assert.strictEqual(VALID_ARTIFACT_KIND_NAMES.size, 4);
+  });
+
+  test('VALID_ARTIFACT_NESTINGS has exactly 2 values', () => {
+    assert.ok(VALID_ARTIFACT_NESTINGS instanceof Set);
+    assert.ok(VALID_ARTIFACT_NESTINGS.has('flat'));
+    assert.ok(VALID_ARTIFACT_NESTINGS.has('nested'));
+    assert.strictEqual(VALID_ARTIFACT_NESTINGS.size, 2);
+  });
+});
+
+// ─── 25. ADR-857 phase 5e: closed ConverterName enum (Part B) ─────────────────
+
+describe('ADR-857 phase 5e: VALID_CONVERTER_NAMES closed enum', () => {
+  test('VALID_CONVERTER_NAMES has exactly 15 entries', () => {
+    assert.ok(VALID_CONVERTER_NAMES instanceof Set, 'VALID_CONVERTER_NAMES must be a Set');
+    assert.strictEqual(VALID_CONVERTER_NAMES.size, 15, 'VALID_CONVERTER_NAMES must have exactly 15 entries, got: ' + VALID_CONVERTER_NAMES.size);
+  });
+
+  test('VALID_CONVERTER_NAMES contains all expected converter names', () => {
+    const expected = [
+      'convertClaudeCommandToAntigravitySkill',
+      'convertClaudeCommandToAugmentSkill',
+      'convertClaudeCommandToClineSkill',
+      'convertClaudeCommandToClaudeSkill',
+      'convertClaudeCommandToCodebuddyCommand',
+      'convertClaudeCommandToCodebuddySkill',
+      'convertClaudeCommandToCodexSkill',
+      'convertClaudeCommandToCopilotSkill',
+      'convertClaudeCommandToCursorCommand',
+      'convertClaudeCommandToCursorSkill',
+      'convertClaudeCommandToKiloSkill',
+      'convertClaudeCommandToKimiSkill',
+      'convertClaudeCommandToOpencodeSkill',
+      'convertClaudeCommandToTraeSkill',
+      'convertClaudeCommandToWindsurfSkill',
+    ];
+    for (const name of expected) {
+      assert.ok(VALID_CONVERTER_NAMES.has(name), 'VALID_CONVERTER_NAMES must contain "' + name + '"');
+    }
+  });
+});
+
+describe('ADR-857 phase 5e: validateArtifactKindEntry — ConverterName enum (FAIL-FIRST regression)', () => {
+  // Helper to build a minimal valid ArtifactKind entry
+  function makeArtifactEntry(overrides) {
+    return {
+      kind: 'skills',
+      destSubpath: 'skills',
+      nesting: 'flat',
+      prefix: 'gsd-',
+      recursive: false,
+      converter: null,
+      ...overrides,
+    };
+  }
+
+  // FAIL-FIRST: unknown converter name must be rejected
+  test('REJECTED: converter "convertClaudeCommandToUnknownRuntime" is not a known ConverterName', () => {
+    const entry = makeArtifactEntry({ converter: 'convertClaudeCommandToUnknownRuntime' });
+    const errors = validateArtifactKindEntry('test-cap', entry, 'artifactLayout.global[0]');
+    assert.ok(errors.length > 0, 'Expected rejection for unknown converter name, got: ' + JSON.stringify(errors));
+    assert.ok(
+      errors.some((e) => e.includes('convertClaudeCommandToUnknownRuntime') && e.includes('not a known ConverterName')),
+      'Error must name the bad converter and say "not a known ConverterName", got: ' + JSON.stringify(errors),
+    );
+  });
+
+  // Valid known name must be accepted
+  test('ACCEPTED: converter "convertClaudeCommandToKiloSkill" is a known ConverterName', () => {
+    const entry = makeArtifactEntry({ converter: 'convertClaudeCommandToKiloSkill' });
+    const errors = validateArtifactKindEntry('test-cap', entry, 'artifactLayout.global[0]');
+    const converterErrors = errors.filter((e) => e.includes('converter'));
+    assert.deepEqual(converterErrors, [], 'Known converter name must be accepted, got: ' + JSON.stringify(converterErrors));
+  });
+
+  // null converter is always accepted (means "no conversion")
+  test('ACCEPTED: converter: null is always accepted', () => {
+    const entry = makeArtifactEntry({ converter: null });
+    const errors = validateArtifactKindEntry('test-cap', entry, 'artifactLayout.global[0]');
+    const converterErrors = errors.filter((e) => e.includes('converter'));
+    assert.deepEqual(converterErrors, [], 'converter: null must always be accepted, got: ' + JSON.stringify(converterErrors));
+  });
+
+  // Parity: all 16 runtime descriptors must have converters in the valid set (or null)
+  test('all 16 real runtime descriptors have converters in VALID_CONVERTER_NAMES or null', () => {
+    const { capMap, errors } = loadAndValidate(new Set());
+    const hardErrors = errors.filter((e) => !e.includes('pending-migration'));
+    assert.deepEqual(hardErrors, [], 'Expected no hard errors from real capabilities, got: ' + JSON.stringify(hardErrors));
+
+    const runtimeIds = [
+      'claude', 'codex', 'antigravity', 'gemini', 'cursor', 'opencode',
+      'kilo', 'copilot', 'augment', 'trae', 'qwen', 'hermes',
+      'codebuddy', 'cline', 'kimi', 'windsurf',
+    ];
+    for (const id of runtimeIds) {
+      const cap = capMap.get(id);
+      assert.ok(cap, 'capMap must contain "' + id + '"');
+      const r = cap.runtime;
+      const allEntries = [
+        ...(r.artifactLayout && Array.isArray(r.artifactLayout.global) ? r.artifactLayout.global : []),
+        ...(r.artifactLayout && Array.isArray(r.artifactLayout.local) ? r.artifactLayout.local : []),
+      ];
+      for (let i = 0; i < allEntries.length; i++) {
+        const entry = allEntries[i];
+        if (entry.converter !== null) {
+          assert.ok(
+            VALID_CONVERTER_NAMES.has(entry.converter),
+            id + ' artifactLayout[' + i + '].converter "' + entry.converter +
+            '" is not in VALID_CONVERTER_NAMES',
+          );
+        }
+      }
+    }
+  });
+
+  // validateCapability end-to-end: unknown converter propagates through the full chain
+  test('validateCapability REJECTS a runtime cap with unknown converter in artifactLayout', () => {
+    const cap = {
+      id: 'test-rt',
+      role: 'runtime',
+      title: 'Test Runtime',
+      description: 'Test runtime with unknown converter.',
+      tier: 'core',
+      requires: [],
+      runtime: {
+        configHome: { kind: 'dot-home', name: '.test-rt', env: [] },
+        configFormat: 'settings-json',
+        artifactLayout: {
+          global: [{
+            kind: 'skills',
+            destSubpath: 'skills',
+            nesting: 'flat',
+            prefix: 'gsd-',
+            recursive: false,
+            converter: 'convertClaudeCommandToUnknownRuntime',
+          }],
+          local: [],
+        },
+        commandStyle: 'slash-hyphen',
+        hooksSurface: 'settings-json',
+        sandboxTier: 'none',
+        supportTier: 1,
+      },
+    };
+    const errors = validateCapability(cap, 'test-rt');
+    assert.ok(errors.length > 0, 'Expected validation errors for unknown converter, got: ' + JSON.stringify(errors));
+    assert.ok(
+      errors.some((e) => e.includes('convertClaudeCommandToUnknownRuntime') && e.includes('not a known ConverterName')),
+      'Error must mention the unknown converter name, got: ' + JSON.stringify(errors),
+    );
+  });
+});
+
+// ─── 26. ADR-857 phase 5e: configFormat ↔ installSurface parity gate (Part A) ─
+
+describe('ADR-857 phase 5e: configFormat ↔ installSurface parity gate', () => {
+  // Helper: build a minimal runtime capMap for parity tests.
+  // installSurface must be supplied for any runtime that should be checked by the gate;
+  // omit it (undefined) to simulate a runtime with no installSurface (gate skips it).
+  function makeRuntimeCapMap(runtimeId, configFormat, installSurface) {
+    const runtime = {
+      configHome: { kind: 'dot-home', name: '.' + runtimeId, env: [] },
+      configFormat,
+      artifactLayout: { global: [], local: [] },
+      commandStyle: 'slash-hyphen',
+      hooksSurface: 'none',
+      sandboxTier: 'none',
+      supportTier: 1,
+    };
+    if (installSurface !== undefined) {
+      runtime.installSurface = installSurface;
+    }
+    const cap = {
+      id: runtimeId,
+      role: 'runtime',
+      title: 'Test ' + runtimeId,
+      description: 'Synthetic runtime for parity gate testing.',
+      tier: 'core',
+      requires: [],
+      runtime,
+    };
+    return new Map([[runtimeId, cap]]);
+  }
+
+  // FAIL-FIRST: parity mismatch must throw
+  test('THROWS: claude with wrong configFormat "toml" (installSurface=settings-json → expected settings-json)', () => {
+    // claude has installSurface=settings-json → expected configFormat=settings-json
+    // Giving it configFormat=toml must trigger the HARD gate
+    const capMap = makeRuntimeCapMap('claude', 'toml', 'settings-json');
+    assert.throws(
+      () => runConfigFormatParityGate(capMap),
+      (err) => {
+        assert.ok(err instanceof Error, 'Must throw an Error');
+        assert.ok(
+          err.message.includes('claude') && err.message.includes('parity gate FAILED'),
+          'Error must name the runtime and say "parity gate FAILED", got: ' + err.message,
+        );
+        assert.ok(
+          err.message.includes('settings-json') && err.message.includes('toml'),
+          'Error must name both the expected and actual configFormat, got: ' + err.message,
+        );
+        return true;
+      },
+    );
+  });
+
+  test('THROWS: codex with wrong configFormat "settings-json" (installSurface=codex-toml → expected toml)', () => {
+    const capMap = makeRuntimeCapMap('codex', 'settings-json', 'codex-toml');
+    assert.throws(
+      () => runConfigFormatParityGate(capMap),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes('codex') && err.message.includes('parity gate FAILED'));
+        return true;
+      },
+    );
+  });
+
+  // All 16 real runtime descriptors must pass the parity gate (true-negative)
+  test('all 16 real runtime descriptors pass the configFormat parity gate (DOES NOT THROW)', () => {
+    const { capMap, errors } = loadAndValidate(new Set());
+    const hardErrors = errors.filter((e) => !e.includes('pending-migration'));
+    assert.deepEqual(hardErrors, [], 'No hard errors expected: ' + JSON.stringify(hardErrors));
+
+    // runConfigFormatParityGate must not throw for the real registry
+    assert.doesNotThrow(
+      () => runConfigFormatParityGate(capMap),
+      'runConfigFormatParityGate must not throw for the real 16 runtime descriptors',
+    );
+  });
+
+  // buildRegistry must not throw for the real registry (end-to-end integration)
+  test('buildRegistry with real 16 runtime descriptors does not throw (parity gate integrated)', () => {
+    const { capMap } = loadAndValidate(new Set());
+    assert.doesNotThrow(
+      () => buildRegistry(capMap),
+      'buildRegistry must not throw for the real registry (parity gate must pass)',
+    );
+  });
+
+  // INSTALL_SURFACE_TO_CONFIG_FORMAT export check
+  test('INSTALL_SURFACE_TO_CONFIG_FORMAT covers all 6 installSurface values with correct mappings', () => {
+    assert.ok(INSTALL_SURFACE_TO_CONFIG_FORMAT instanceof Map, 'Must be a Map');
+    assert.strictEqual(INSTALL_SURFACE_TO_CONFIG_FORMAT.size, 6, 'Must cover 6 installSurface values');
+    assert.strictEqual(INSTALL_SURFACE_TO_CONFIG_FORMAT.get('settings-json'),        'settings-json');
+    assert.strictEqual(INSTALL_SURFACE_TO_CONFIG_FORMAT.get('codex-toml'),           'toml');
+    assert.strictEqual(INSTALL_SURFACE_TO_CONFIG_FORMAT.get('copilot-instructions'), 'markdown');
+    assert.strictEqual(INSTALL_SURFACE_TO_CONFIG_FORMAT.get('cline-rules'),          'markdown-dir');
+    assert.strictEqual(INSTALL_SURFACE_TO_CONFIG_FORMAT.get('cursor-hooks-json'),    'none');
+    assert.strictEqual(INSTALL_SURFACE_TO_CONFIG_FORMAT.get('profile-marker-only'),  'none');
+  });
+
+  // Feature capabilities (role:feature) are silently ignored by the gate
+  test('feature capabilities (role:feature) are ignored by the parity gate — does not throw', () => {
+    // Use the real UI cap (role:feature, has no installSurface) — gate must pass silently
+    const capMap = new Map([['ui', UI_CAP]]);
+    assert.doesNotThrow(
+      () => runConfigFormatParityGate(capMap),
+      'Feature capabilities must be ignored by the configFormat parity gate',
+    );
+  });
+
+  // Runtimes with no installSurface in their descriptor are excluded from the gate.
+  // The gate reads installSurface from cap.runtime.installSurface (the descriptor level);
+  // if it is absent (typeof !== 'string'), the runtime is soft-skipped.
+  // NOTE: the gate no longer uses the adapter registry — it reads purely from the descriptor.
+  test('runtime with no installSurface in descriptor (e.g. hypothetical "grok") is excluded from parity gate — does not throw', () => {
+    // 'grok' has no installSurface → gate must soft-skip (typeof r.installSurface !== 'string')
+    const grokCap = {
+      id: 'grok',
+      role: 'runtime',
+      title: 'Grok',
+      description: 'Hypothetical grok runtime',
+      tier: 'core',
+      requires: [],
+      runtime: {
+        configHome: { kind: 'dot-home', name: '.grok', env: [] },
+        configFormat: 'settings-json',  // any value — gate should not check this (no installSurface)
+        artifactLayout: { global: [], local: [] },
+        commandStyle: 'slash-hyphen',
+        hooksSurface: 'none',
+        sandboxTier: 'none',
+        supportTier: 2,
+        // intentionally no installSurface — gate must skip this entry
+      },
+    };
+    const capMap = new Map([['grok', grokCap]]);
+    assert.doesNotThrow(
+      () => runConfigFormatParityGate(capMap),
+      'Runtimes with no installSurface in their descriptor must be excluded from the parity gate',
+    );
+  });
+});
+
+// ─── 27. ADR-857 phase 5f: cross-field consistency gate rejection tests ────────
+
+describe('ADR-857 phase 5f: cross-field consistency gate rejection tests (DEFECT.GENERATIVE-FIX)', () => {
+  // Helper: build a minimal VALID runtime cap for cross-field rejection tests.
+  // Override any field via the overrides object.
+  function makeValidRuntimeCap(overrides) {
+    const base = {
+      id: 'test-runtime',
+      role: 'runtime',
+      title: 'Test runtime',
+      description: 'Synthetic runtime for cross-field gate rejection testing.',
+      tier: 'core',
+      requires: [],
+      runtime: {
+        configHome: { kind: 'dot-home', name: '.test-runtime', env: [] },
+        configFormat: 'settings-json',
+        artifactLayout: { global: [], local: [] },
+        commandStyle: 'slash-hyphen',
+        hooksSurface: 'settings-json',
+        hookEvents: 'claude',
+        sandboxTier: 'none',
+        supportTier: 1,
+        installSurface: 'settings-json',
+        writesSharedSettings: true,
+        permissionWriter: null,
+        extendedHookEvents: [],
+      },
+    };
+    if (overrides && typeof overrides === 'object') {
+      for (const [k, v] of Object.entries(overrides)) {
+        if (k === 'runtime' && typeof v === 'object') {
+          Object.assign(base.runtime, v);
+        } else {
+          base[k] = v;
+        }
+      }
+    }
+    return base;
+  }
+
+  test('REJECTS: installSurface not in VALID_INSTALL_SURFACES → throws validation error', () => {
+    const cap = makeValidRuntimeCap({ runtime: { installSurface: 'bogus-surface' } });
+    const errors = validateRuntimeBody(cap);
+    assert.ok(
+      errors.some((e) => e.includes('installSurface') && e.includes('bogus-surface')),
+      'Expected error about invalid installSurface, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('REJECTS: permissionWriter not null and not in {opencode,kilo} → throws validation error', () => {
+    const cap = makeValidRuntimeCap({ runtime: { permissionWriter: 'notarealwriter' } });
+    const errors = validateRuntimeBody(cap);
+    assert.ok(
+      errors.some((e) => e.includes('permissionWriter') && e.includes('notarealwriter')),
+      'Expected error about invalid permissionWriter, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('REJECTS: extendedHookEvents containing a bogus event ("SubagentStopTypo") → throws validation error', () => {
+    const cap = makeValidRuntimeCap({ runtime: { extendedHookEvents: ['SubagentStopTypo'] } });
+    const errors = validateRuntimeBody(cap);
+    assert.ok(
+      errors.some((e) => e.includes('extendedHookEvents') && e.includes('SubagentStopTypo')),
+      'Expected error about invalid extendedHookEvents entry, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('REJECTS: writesSharedSettings not a boolean → throws validation error', () => {
+    const cap = makeValidRuntimeCap({ runtime: { writesSharedSettings: 'yes' } });
+    const errors = validateRuntimeBody(cap);
+    assert.ok(
+      errors.some((e) => e.includes('writesSharedSettings') && e.includes('"yes"')),
+      'Expected error about writesSharedSettings not boolean, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('GATE A REJECTS: profile-marker-only + hooksSurface="settings-json" → validation error', () => {
+    // profile-marker-only installSurface only allows hooksSurface='none'
+    const cap = makeValidRuntimeCap({
+      runtime: {
+        installSurface: 'profile-marker-only',
+        hooksSurface: 'settings-json',
+        configFormat: 'none', // correct for profile-marker-only
+      },
+    });
+    const errors = validateRuntimeBody(cap);
+    assert.ok(
+      errors.some((e) => e.includes('hooksSurface') && e.includes('profile-marker-only')),
+      'Expected GATE A error for profile-marker-only + hooksSurface=settings-json, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('GATE B REJECTS: hookEvents="claude" + extendedHookEvents=["BeforeAgent"] → validation error', () => {
+    // BeforeAgent is a Gemini agent-event — requires hookEvents='gemini', not 'claude'
+    const cap = makeValidRuntimeCap({
+      runtime: {
+        hookEvents: 'claude',
+        extendedHookEvents: ['BeforeAgent'],
+      },
+    });
+    const errors = validateRuntimeBody(cap);
+    assert.ok(
+      errors.some((e) => e.includes('BeforeAgent') && e.includes('"gemini"')),
+      'Expected GATE B error for hookEvents=claude + extendedHookEvents=[BeforeAgent], got: ' + JSON.stringify(errors),
+    );
+  });
+
+  // Verify the new constants are well-formed
+  test('INSTALL_SURFACE_TO_ALLOWED_HOOKS_SURFACES covers all 6 installSurface values', () => {
+    assert.ok(INSTALL_SURFACE_TO_ALLOWED_HOOKS_SURFACES instanceof Map, 'Must be a Map');
+    assert.strictEqual(INSTALL_SURFACE_TO_ALLOWED_HOOKS_SURFACES.size, 6, 'Must cover 6 installSurface values');
+    for (const installSurface of VALID_INSTALL_SURFACES) {
+      assert.ok(
+        INSTALL_SURFACE_TO_ALLOWED_HOOKS_SURFACES.has(installSurface),
+        'INSTALL_SURFACE_TO_ALLOWED_HOOKS_SURFACES must include installSurface "' + installSurface + '"',
+      );
+    }
+  });
+
+  test('VALID_EXTENDED_HOOK_EVENTS covers all 7 known extended events', () => {
+    assert.ok(VALID_EXTENDED_HOOK_EVENTS instanceof Set, 'Must be a Set');
+    assert.strictEqual(VALID_EXTENDED_HOOK_EVENTS.size, 7, 'Must cover 7 extended hook events');
+    for (const ev of ['SubagentStop', 'Stop', 'PreCompact', 'FileChanged', 'BeforeAgent', 'AfterAgent', 'BeforeModel']) {
+      assert.ok(VALID_EXTENDED_HOOK_EVENTS.has(ev), 'Must include event "' + ev + '"');
+    }
+  });
+
+  test('VALID_PERMISSION_WRITERS covers exactly {opencode, kilo}', () => {
+    assert.ok(VALID_PERMISSION_WRITERS instanceof Set, 'Must be a Set');
+    assert.strictEqual(VALID_PERMISSION_WRITERS.size, 2, 'Must cover 2 permission writers');
+    assert.ok(VALID_PERMISSION_WRITERS.has('opencode'), 'Must include opencode');
+    assert.ok(VALID_PERMISSION_WRITERS.has('kilo'), 'Must include kilo');
+  });
+
+  // Confirm the valid base fixture does NOT produce errors (sanity)
+  test('valid runtime fixture produces no validation errors', () => {
+    const cap = makeValidRuntimeCap({});
+    const errors = validateRuntimeBody(cap);
+    assert.deepEqual(errors, [], 'Valid fixture must produce no errors, got: ' + JSON.stringify(errors));
   });
 });
