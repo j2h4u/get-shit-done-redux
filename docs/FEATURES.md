@@ -165,6 +165,7 @@
   - [Milestone Tag Creation Toggle](#141-milestone-tag-creation-toggle)
   - [Structured JSON Error Mode](#142-structured-json-error-mode)
   - [UAT-Passed Predicate](#143-uat-passed-predicate)
+  - [Spec-Phase Edge-Completeness Probe](#144-spec-phase-edge-completeness-probe)
 
 ---
 
@@ -2506,9 +2507,10 @@ Users who run a memory / knowledge-base MCP server (for example, ExoCortex-style
 **Purpose:** Allow projects to store their CLAUDE.md in a non-root location. The `claude_md_path` config key controls where `/gsd-profile-user` and related commands write the generated CLAUDE.md file.
 
 **Requirements:**
-- REQ-CMDPATH-01: `claude_md_path` defaults to `./CLAUDE.md`
+- REQ-CMDPATH-01: `claude_md_path` defaults to `./.claude/CLAUDE.md` (a valid project-scoped memory location; changed from `./CLAUDE.md` in v1.5 per [#1098](https://github.com/open-gsd/gsd-core/issues/1098) so generated content does not pollute a hand-crafted repo-root `CLAUDE.md`)
 - REQ-CMDPATH-02: Profile generation commands read the path from config and write to the specified location
 - REQ-CMDPATH-03: Relative paths are resolved from the project root
+- REQ-CMDPATH-04: `generate-claude-md` never overwrites an existing instruction file that lacks GSD section markers (a hand-crafted file) unless `--force` is passed
 
 **Configuration:** `claude_md_path`
 
@@ -3086,3 +3088,34 @@ explicit reviewer flags -> --all -> review.default_reviewers -> all detected rev
 - [docs index](README.md)
 
 **Reference:** [JSON Error Mode](json-errors.md)
+
+---
+
+### 144. Spec-Phase Edge-Completeness Probe
+
+**Command:** `/gsd-spec-phase`
+
+**Purpose:** Surface the omitted domain-boundary edges that silently invalidate a requirement — touching intervals, empty inputs, rounding ties, grapheme truncation — before they become production defects. Runs as `Step 5.5` of spec-phase, after the ambiguity gate.
+
+**Behavior:** For each SPEC requirement the probe classifies its data/behavior shape, then raises only the *applicable* categories from a closed 8-category taxonomy (boundary, adjacency, empty, encoding, ordering, precision, idempotency, concurrency) via a relevance filter. Each raised category proposes one concrete candidate edge, which the author resolves to exactly one of four states:
+
+| State | Meaning | Downstream effect |
+|-------|---------|-------------------|
+| `covered` | An acceptance criterion handles the edge | Pass/fail line written into the SPEC Acceptance Criteria block; lifted into `plan-phase` `must_haves.truths` |
+| `dismissed` | The edge cannot occur (requires a non-empty reason) | Recorded with its reason; empty dismissals are rejected |
+| `backstop` | Intent recorded, needs a held-out/property-based test | Lifted into `must_haves.truths` as a non-inferable check |
+| `unresolved` | Deferred | Soft-gates the spec; row stamped `⚠ Edge unresolved — planner must treat as assumption` |
+
+The resolved edges populate a `## Edge Coverage` section in `SPEC.md`. Unresolved *applicable* edges trigger a soft gate (Resolve / Write-anyway-flagged / Keep-probing) rather than a hard block. Under `--auto`, the probe **never auto-dismisses** — it auto-covers where a defensible criterion exists, otherwise auto-backstops, and logs `[auto] edge coverage: C covered, B backstop, U unresolved`.
+
+The load-bearing wire is the `plan-phase` lift: `covered` and `backstop` edges become `must_haves.truths` the verifier can check, so the section is not merely documentation.
+
+**Requirements:**
+- REQ-EDGE-01: The edge pass MUST run after the ambiguity gate and emit a `## Edge Coverage` SPEC section.
+- REQ-EDGE-02: The relevance filter MUST raise only applicable categories; each raised edge resolves to exactly one of covered/dismissed/backstop/unresolved.
+- REQ-EDGE-03: A `dismissed` resolution MUST require a non-empty reason.
+- REQ-EDGE-04: An unresolved applicable edge MUST trigger the soft gate; write-anyway stamps the row as a planner assumption.
+- REQ-EDGE-05: `--auto` MUST never auto-dismiss — auto-cover or auto-backstop only.
+- REQ-EDGE-06: `plan-phase` MUST lift `covered` criteria and `backstop` notes into `must_haves.truths`.
+
+**Reference:** [Edge Probe](../gsd-core/references/edge-probe.md)
