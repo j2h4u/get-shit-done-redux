@@ -314,7 +314,8 @@ describe('bug #557 — <details>/<summary> active milestone strip', () => {
     assert.ok(result.success, `roadmap.analyze failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
-    const phaseNums = (output.phases || []).map(p => p.number);
+    assert.ok(Array.isArray(output.phases), `raw: ${JSON.stringify(output)}`);
+    const phaseNums = output.phases.map(p => p.number);
     assert.ok(
       !phaseNums.includes('1') && !phaseNums.includes('2'),
       `Shipped phases 1 and 2 (from collapsed <details>) must not appear in the analyze output. ` +
@@ -437,7 +438,8 @@ describe('bug #557 — <details>/<summary> active milestone strip', () => {
     assert.ok(result.success, `init progress failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
-    const phaseNums = (output.phases || []).map(p => String(p.number).replace(/^0+/, '') || '0');
+    assert.ok(Array.isArray(output.phases), `raw: ${JSON.stringify(output)}`);
+    const phaseNums = output.phases.map(p => String(p.number).replace(/^0+/, '') || '0');
     assert.deepStrictEqual(
       phaseNums,
       ['8', '9', '10', '11'],
