@@ -2158,6 +2158,47 @@ describe('phase complete command', () => {
     assert.ok(roadmap.includes('completed'), 'completion date should be added');
   });
 
+  test('does not warn on historical verification previous_status gaps_found when current status passed', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      `# Roadmap
+
+- [ ] Phase 1: Foundation
+
+### Phase 1: Foundation
+**Goal:** Setup
+**Plans:** 1 plans
+`
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# State\n\n**Current Phase:** 01\n**Current Phase Name:** Foundation\n**Status:** In progress\n**Current Plan:** 01-01\n**Last Activity:** 2025-01-01\n**Last Activity Description:** Working\n`
+    );
+
+    const p1 = path.join(tmpDir, '.planning', 'phases', '01-foundation');
+    fs.mkdirSync(p1, { recursive: true });
+    fs.writeFileSync(path.join(p1, '01-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary');
+    fs.writeFileSync(
+      path.join(p1, '01-VERIFICATION.md'),
+      [
+        '---',
+        'status: passed',
+        'previous_status: gaps_found',
+        '---',
+        '# Verification',
+        '',
+        'Historical re-verification metadata should not block closeout.',
+      ].join('\n')
+    );
+
+    const result = runGsdTools('phase complete 1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const output = JSON.parse(result.output);
+    assert.deepStrictEqual(output.warnings, []);
+    assert.strictEqual(output.has_warnings, false);
+  });
+
   test('detects last phase in milestone', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
@@ -3855,6 +3896,66 @@ describe('bug #2526: phase complete warns about unregistered REQ-IDs', () => {
     assert.match(combined, /REQ-002/, 'should warn about REQ-002');
     assert.match(combined, /REQ-003/, 'should warn about REQ-003');
     assert.match(combined, /REQ-004/, 'should warn about REQ-004');
+  });
+
+  test('does not warn for deferred v2 requirements missing from v1 traceability', () => {
+    const phasesDir = path.join(planningDir, 'phases', '01-foundation');
+    fs.mkdirSync(phasesDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(phasesDir, '01-1-PLAN.md'),
+      '---\nphase: 1\nplan: 1\n---\n# Plan 1\n'
+    );
+    fs.writeFileSync(
+      path.join(phasesDir, '01-1-SUMMARY.md'),
+      '---\nstatus: complete\n---\n# Summary\nDone.'
+    );
+
+    const roadmapPath = path.join(planningDir, 'ROADMAP.md');
+    fs.writeFileSync(roadmapPath, [
+      '# Roadmap',
+      '',
+      '### Phase 1: Foundation',
+      '',
+      '**Goal:** Build core',
+      '**Requirements:** REQ-001',
+      '**Plans:** 1 plans',
+      '',
+      'Plans:',
+      '- [x] 01-1-PLAN.md',
+      '',
+      '| Phase | Plans | Status | Completed |',
+      '|-------|-------|--------|-----------|',
+      '| 1. Foundation | 0/1 | Pending | - |',
+    ].join('\n'));
+
+    const reqPath = path.join(planningDir, 'REQUIREMENTS.md');
+    fs.writeFileSync(reqPath, [
+      '# Requirements',
+      '',
+      '## Functional Requirements',
+      '',
+      '- [x] **REQ-001**: Core data model',
+      '',
+      '## Deferred v2 Requirements',
+      '',
+      '- [ ] **FILE-001**: File watching backlog item',
+      '- [ ] **ROLL-001**: Rollout backlog item',
+      '- [ ] **OBSV-001**: Observability backlog item',
+      '',
+      '## Traceability',
+      '',
+      '| REQ-ID | Phase | Status |',
+      '|--------|-------|--------|',
+      '| REQ-001 | 1 | Pending |',
+    ].join('\n'));
+
+    const combined = runPhaseComplete(tmpDir);
+    assert.doesNotMatch(combined, /FILE-001|ROLL-001|OBSV-001/);
+    assert.doesNotMatch(
+      combined,
+      /missing from Traceability table/i,
+      'deferred v2 requirements should not be required in v1 traceability',
+    );
   });
 });
 

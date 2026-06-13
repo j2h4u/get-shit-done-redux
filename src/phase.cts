@@ -1331,6 +1331,32 @@ function writePlanningFileSet(writes: WriteSpec[]): void {
   }
 }
 
+function normalizeFrontmatterStatus(value: unknown): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function collectTraceableRequirementIds(requirementsContent: string): string[] {
+  const ids: string[] = [];
+  let suppressedSection = false;
+  for (const line of requirementsContent.split(/\r?\n/)) {
+    const heading = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      const title = heading[2].toLowerCase();
+      suppressedSection = /\b(deferred|future|later|backlog|out[- ]of[- ]scope|v2)\b/.test(title);
+      continue;
+    }
+
+    if (suppressedSection) continue;
+    const bodyReqPattern = /\*\*([A-Z][A-Z0-9]*-\d+)\*\*/g;
+    let bodyMatch: RegExpExecArray | null;
+    while ((bodyMatch = bodyReqPattern.exec(line)) !== null) {
+      const id = bodyMatch[1];
+      if (!ids.includes(id)) ids.push(id);
+    }
+  }
+  return ids;
+}
+
 function cmdPhaseComplete(cwd: string, phaseNum: string, raw: boolean): void {
   if (!phaseNum) {
     error('phase number required for phase complete');
@@ -1372,8 +1398,11 @@ function cmdPhaseComplete(cwd: string, phaseNum: string, raw: boolean): void {
       (f) => f.includes('-VERIFICATION') && f.endsWith('.md'),
     )) {
       const content = fs.readFileSync(path.join(phaseFullDir, file), 'utf-8');
-      if (/status: human_needed/.test(content)) warnings.push(`${file}: needs human verification`);
-      if (/status: gaps_found/.test(content)) warnings.push(`${file}: has unresolved gaps`);
+      const status = normalizeFrontmatterStatus(
+        (extractFrontmatter(content) as Record<string, unknown>)['status'],
+      );
+      if (status === 'human_needed') warnings.push(`${file}: needs human verification`);
+      if (status === 'gaps_found') warnings.push(`${file}: has unresolved gaps`);
     }
   } catch {
     /* intentionally empty */
@@ -1489,13 +1518,7 @@ function cmdPhaseComplete(cwd: string, phaseNum: string, raw: boolean): void {
             }
           }
 
-          const bodyReqIds: string[] = [];
-          const bodyReqPattern = /\*\*([A-Z][A-Z0-9]*-\d+)\*\*/g;
-          let bodyMatch: RegExpExecArray | null;
-          while ((bodyMatch = bodyReqPattern.exec(reqContent)) !== null) {
-            const id = bodyMatch[1];
-            if (!bodyReqIds.includes(id)) bodyReqIds.push(id);
-          }
+          const bodyReqIds = collectTraceableRequirementIds(reqContent);
 
           const traceabilityHeadingMatch = reqContent.match(/^#{1,6}\s+Traceability\b/im);
           const traceabilitySection = traceabilityHeadingMatch
