@@ -51,6 +51,7 @@ const {
   VALID_INSTALL_SURFACES,
   VALID_EXTENDED_HOOK_EVENTS,
   VALID_PERMISSION_WRITERS,
+  validateRuntimeCompat,
   validateRuntimeBody,
   loadCentralConfigKeys,
 } = require('../scripts/gen-capability-registry.cjs');
@@ -98,6 +99,11 @@ describe('UI pilot capability', () => {
     // capabilities.ui exists
     assert.ok(registry.capabilities.ui, 'registry.capabilities.ui should exist');
     assert.strictEqual(registry.version, SCHEMA_VERSION);
+    assert.deepStrictEqual(
+      registry.capabilities.ui.runtimeCompat,
+      { supported: ['*'], unsupported: [] },
+      'feature runtime compatibility contract should be preserved in the registry',
+    );
 
     // bySkill maps ui-phase and ui-review to 'ui'
     assert.strictEqual(registry.bySkill['ui-phase'], 'ui');
@@ -200,6 +206,32 @@ describe('validateCapability adversarial cases', () => {
     assert.ok(errors.some((e) => e.includes('role')));
   });
 
+  test('feature capability without runtimeCompat is rejected', () => {
+    const cap = { ...UI_CAP };
+    delete cap.runtimeCompat;
+    const errors = validateCapability(cap, 'ui');
+    assert.ok(
+      errors.some((e) => e.includes('runtimeCompat')),
+      'Expected missing runtimeCompat validation error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('runtimeCompat.supported must be a non-empty array', () => {
+    const errors = validateRuntimeCompat('ui', { supported: [], unsupported: [] });
+    assert.ok(
+      errors.some((e) => e.includes('runtimeCompat.supported')),
+      'Expected supported-array validation error, got: ' + JSON.stringify(errors),
+    );
+  });
+
+  test('runtimeCompat.supported wildcard cannot be mixed with runtime ids', () => {
+    const errors = validateRuntimeCompat('ui', { supported: ['*', 'claude'], unsupported: [] });
+    assert.ok(
+      errors.some((e) => e.includes('wildcard')),
+      'Expected wildcard validation error, got: ' + JSON.stringify(errors),
+    );
+  });
+
   test('bad tier enum rejected', () => {
     const cap = { ...UI_CAP, tier: 'premium' };
     const errors = validateCapability(cap, 'ui');
@@ -282,6 +314,40 @@ describe('validateCrossCapability adversarial cases', () => {
     const errors = validateCrossCapability(capMap, new Set());
     assert.ok(errors.length > 0);
     assert.ok(errors.some((e) => e.includes('nonexistent-cap')));
+  });
+
+  test('runtimeCompat explicit runtime ids must exist', () => {
+    const cap = {
+      ...UI_CAP,
+      runtimeCompat: { supported: ['claude', 'future-runtime'], unsupported: [] },
+    };
+    const runtime = {
+      id: 'claude',
+      role: 'runtime',
+      title: 'Claude',
+      description: 'Runtime fixture.',
+      tier: 'core',
+      requires: [],
+      runtime: {
+        configHome: { kind: 'dot-home', name: '.claude', env: ['CLAUDE_CONFIG_DIR'] },
+        configFormat: 'settings-json',
+        artifactLayout: { global: [], local: [] },
+        commandStyle: 'slash-hyphen',
+        hooksSurface: 'settings-json',
+        sandboxTier: 'none',
+        supportTier: 1,
+        installSurface: 'settings-json',
+        writesSharedSettings: true,
+        permissionWriter: null,
+        extendedHookEvents: [],
+      },
+    };
+    const capMap = new Map([['ui', cap], ['claude', runtime]]);
+    const errors = validateCrossCapability(capMap, new Set());
+    assert.ok(
+      errors.some((e) => e.includes('runtimeCompat.supported') && e.includes('future-runtime')),
+      'Expected unknown runtimeCompat runtime error, got: ' + JSON.stringify(errors),
+    );
   });
 
   test('requires cycle rejected', () => {
@@ -372,6 +438,117 @@ describe('topological step ordering', () => {
     const sorted = topoSortSteps([stepZ, stepA]);
     assert.strictEqual(sorted[0].capId, 'a-cap', 'a-cap should come first (alphabetical tiebreak)');
     assert.strictEqual(sorted[1].capId, 'z-cap');
+  });
+
+  test('contributions at one point use produces/consumes dependency order', () => {
+    const capMap = new Map([
+      ['a-consumer', {
+        id: 'a-consumer',
+        role: 'feature',
+        title: 'Consumer',
+        tier: 'full',
+        requires: [],
+        runtimeCompat: { supported: ['*'], unsupported: [] },
+        skills: [],
+        agents: [],
+        hooks: [],
+        config: {},
+        steps: [],
+        contributions: [{
+          point: 'plan:pre',
+          into: 'planner',
+          fragment: { inline: 'Consume produced planning note.' },
+          produces: [],
+          consumes: ['PLAN-NOTE.md'],
+          onError: 'skip',
+        }],
+        gates: [],
+      }],
+      ['b-producer', {
+        id: 'b-producer',
+        role: 'feature',
+        title: 'Producer',
+        tier: 'full',
+        requires: [],
+        skills: [],
+        agents: [],
+        hooks: [],
+        config: {},
+        steps: [],
+        contributions: [{
+          point: 'plan:pre',
+          into: 'planner',
+          fragment: { inline: 'Produce planning note.' },
+          produces: ['PLAN-NOTE.md'],
+          consumes: [],
+          onError: 'skip',
+        }],
+        gates: [],
+      }],
+    ]);
+
+    const registry = buildRegistry(capMap);
+    assert.deepEqual(
+      registry.byLoopPoint['plan:pre'].contributions.map((c) => c.capId),
+      ['b-producer', 'a-consumer'],
+    );
+  });
+
+  test('contribution produces/consumes cycle throws a clear error', () => {
+    const capMap = new Map([
+      ['cap-a', {
+        id: 'cap-a',
+        role: 'feature',
+        title: 'A',
+        tier: 'full',
+        requires: [],
+        skills: [],
+        agents: [],
+        hooks: [],
+        config: {},
+        steps: [],
+        contributions: [{
+          point: 'plan:pre',
+          into: 'planner',
+          fragment: { inline: 'A.' },
+          produces: ['A.md'],
+          consumes: ['B.md'],
+          onError: 'skip',
+        }],
+        gates: [],
+      }],
+      ['cap-b', {
+        id: 'cap-b',
+        role: 'feature',
+        title: 'B',
+        tier: 'full',
+        requires: [],
+        skills: [],
+        agents: [],
+        hooks: [],
+        config: {},
+        steps: [],
+        contributions: [{
+          point: 'plan:pre',
+          into: 'planner',
+          fragment: { inline: 'B.' },
+          produces: ['B.md'],
+          consumes: ['A.md'],
+          onError: 'skip',
+        }],
+        gates: [],
+      }],
+    ]);
+
+    assert.throws(
+      () => buildRegistry(capMap),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /contributions/);
+        assert.match(err.message, /cycle/);
+        return true;
+      },
+    );
   });
 });
 
@@ -517,6 +694,37 @@ describe('registry structure', () => {
     assert.ok(closure.has('cap-b'), 'closure should include cap-b');
     assert.ok(closure.has('cap-c'), 'closure should include cap-c (transitive)');
     assert.strictEqual(closure.size, 2);
+  });
+});
+
+describe('ADR-857 phase 6 planning feature capabilities', () => {
+  const realRegistry = require('../gsd-core/bin/lib/capability-registry.cjs');
+
+  test('real registry declares research, ai-integration, and pattern-mapper capabilities', () => {
+    for (const capId of ['research', 'ai-integration', 'pattern-mapper']) {
+      assert.ok(realRegistry.capabilities[capId], `${capId} capability must be declared`);
+      assert.strictEqual(realRegistry.capabilities[capId].role, 'feature');
+    }
+  });
+
+  test('planning feature capabilities own their workflow config keys', () => {
+    assert.strictEqual(realRegistry.configKeys['workflow.research'], 'research');
+    assert.strictEqual(realRegistry.configKeys['workflow.ai_integration_phase'], 'ai-integration');
+    assert.strictEqual(realRegistry.configKeys['workflow.pattern_mapper'], 'pattern-mapper');
+  });
+
+  test('planning feature capabilities register plan:pre hooks', () => {
+    const hooks = [
+      ...realRegistry.byLoopPoint['plan:pre'].steps,
+      ...realRegistry.byLoopPoint['plan:pre'].contributions,
+      ...realRegistry.byLoopPoint['plan:pre'].gates,
+    ];
+    for (const capId of ['research', 'ai-integration', 'pattern-mapper']) {
+      assert.ok(
+        hooks.some((hook) => hook.capId === capId),
+        `${capId} must participate in plan:pre through the Capability Registry`,
+      );
+    }
   });
 });
 
@@ -1010,6 +1218,185 @@ describe('S1: fragment.path traversal guard', () => {
     const errors = validateCapability(makeCapWithContribPath(''), 'ui');
     assert.ok(errors.length > 0, 'Expected rejection for empty path');
     assert.ok(errors.some((e) => e.includes('fragment.path')));
+  });
+
+  test('array fragment shape is rejected', () => {
+    const cap = {
+      ...UI_CAP,
+      contributions: [
+        {
+          point: 'plan:pre',
+          into: 'planner',
+          fragment: [],
+          when: 'workflow.ui_phase',
+          onError: 'skip',
+        },
+      ],
+    };
+    const errors = validateCapability(cap, 'ui');
+    assert.ok(errors.some((e) => e.includes('fragment') && e.includes('object')));
+  });
+
+  test('non-string fragment.inline is rejected', () => {
+    const cap = {
+      ...UI_CAP,
+      contributions: [
+        {
+          point: 'plan:pre',
+          into: 'planner',
+          fragment: { inline: 42 },
+          when: 'workflow.ui_phase',
+          onError: 'skip',
+        },
+      ],
+    };
+    const errors = validateCapability(cap, 'ui');
+    assert.ok(errors.some((e) => e.includes('fragment.inline') && e.includes('string')));
+  });
+
+  test('empty fragment.inline string is rejected', () => {
+    const cap = {
+      ...UI_CAP,
+      contributions: [
+        {
+          point: 'plan:pre',
+          into: 'planner',
+          fragment: { inline: '' },
+          when: 'workflow.ui_phase',
+          onError: 'skip',
+        },
+      ],
+    };
+    const errors = validateCapability(cap, 'ui');
+    assert.ok(errors.some((e) => e.includes('fragment.inline') && e.includes('non-empty')));
+  });
+
+  test('non-array contribution produces is rejected', () => {
+    const cap = {
+      ...UI_CAP,
+      contributions: [
+        {
+          point: 'plan:pre',
+          into: 'planner',
+          fragment: { inline: 'Plan with UI context.' },
+          produces: 'PLAN-NOTE.md',
+          consumes: [],
+          when: 'workflow.ui_phase',
+          onError: 'skip',
+        },
+      ],
+    };
+    const errors = validateCapability(cap, 'ui');
+    assert.ok(errors.some((e) => e.includes('produces') && e.includes('array')));
+  });
+
+  test('non-string contribution consumes entry is rejected', () => {
+    const cap = {
+      ...UI_CAP,
+      contributions: [
+        {
+          point: 'plan:pre',
+          into: 'planner',
+          fragment: { inline: 'Plan with UI context.' },
+          produces: [],
+          consumes: [42],
+          when: 'workflow.ui_phase',
+          onError: 'skip',
+        },
+      ],
+    };
+    const errors = validateCapability(cap, 'ui');
+    assert.ok(errors.some((e) => e.includes('consumes entries') && e.includes('strings')));
+  });
+
+  test('fragment.path is materialized into inline registry content', (t) => {
+    const capsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-cap-fragment-'));
+    t.after(() => cleanup(capsDir));
+    const capDir = path.join(capsDir, 'planning-advice');
+    fs.mkdirSync(path.join(capDir, 'fragments'), { recursive: true });
+    fs.writeFileSync(
+      path.join(capDir, 'fragments', 'plan-pre.md'),
+      'Use the capability-owned planning fragment.\n',
+    );
+    fs.writeFileSync(
+      path.join(capDir, 'capability.json'),
+      JSON.stringify({
+        id: 'planning-advice',
+        role: 'feature',
+        title: 'Planning advice',
+        description: 'Synthetic fixture for fragment path materialization.',
+        tier: 'full',
+        requires: [],
+        runtimeCompat: { supported: ['*'], unsupported: [] },
+        skills: [],
+        agents: [],
+        hooks: [],
+        config: {},
+        steps: [],
+        contributions: [{
+          point: 'plan:pre',
+          into: 'planner',
+          fragment: { path: 'fragments/plan-pre.md' },
+          produces: [],
+          consumes: ['CONTEXT.md'],
+          onError: 'skip',
+        }],
+        gates: [],
+      }),
+    );
+
+    const { capMap, errors } = loadAndValidate(new Set(), capsDir);
+    assert.deepEqual(errors, []);
+    const registry = buildRegistry(capMap);
+    assert.strictEqual(
+      registry.byLoopPoint['plan:pre'].contributions[0].fragment.inline,
+      'Use the capability-owned planning fragment.\n',
+    );
+  });
+
+  test('step fragment.path is materialized into inline registry content', (t) => {
+    const capsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-cap-step-fragment-'));
+    t.after(() => cleanup(capsDir));
+    const capDir = path.join(capsDir, 'research');
+    fs.mkdirSync(path.join(capDir, 'fragments'), { recursive: true });
+    fs.writeFileSync(
+      path.join(capDir, 'fragments', 'plan-pre.md'),
+      'Research prompt owned by the capability.\n',
+    );
+    fs.writeFileSync(
+      path.join(capDir, 'capability.json'),
+      JSON.stringify({
+        id: 'research',
+        role: 'feature',
+        title: 'Research',
+        description: 'Synthetic fixture for step fragment materialization.',
+        tier: 'standard',
+        requires: [],
+        runtimeCompat: { supported: ['*'], unsupported: [] },
+        skills: [],
+        agents: ['gsd-phase-researcher'],
+        hooks: [],
+        config: {},
+        steps: [{
+          point: 'plan:pre',
+          ref: { agent: 'gsd-phase-researcher' },
+          fragment: { path: 'fragments/plan-pre.md' },
+          produces: ['RESEARCH.md'],
+          consumes: ['CONTEXT.md'],
+          onError: 'skip',
+        }],
+        contributions: [],
+        gates: [],
+      }),
+    );
+
+    const { capMap, errors } = loadAndValidate(new Set(), capsDir);
+    assert.deepEqual(errors, []);
+    const registry = buildRegistry(capMap);
+    assert.strictEqual(
+      registry.byLoopPoint['plan:pre'].steps[0].fragment.inline,
+      'Research prompt owned by the capability.\n',
+    );
   });
 });
 
@@ -2356,6 +2743,7 @@ function makeCommandCap(id, commands) {
     description: 'Synthetic capability for ADR-959 command tests.',
     tier: 'full',
     requires: [],
+    runtimeCompat: { supported: ['*'], unsupported: [] },
     skills: [],
     agents: [],
     hooks: [],
