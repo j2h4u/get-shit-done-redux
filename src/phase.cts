@@ -1437,14 +1437,21 @@ function cmdPhaseComplete(cwd: string, phaseNum: string, raw: boolean): void {
         );
         roadmapContent = roadmapContent.replace(tableRowPattern, (fullRow) => {
           const cells = fullRow.split('|').slice(1, -1);
+          const completedValue = (statusCell: string, completedCell: string): string => {
+            const alreadyComplete = /\bcomplete\b/i.test(statusCell);
+            const current = completedCell.trim();
+            return alreadyComplete && current && current !== '-' ? ` ${current} ` : ` ${today} `;
+          };
           if (cells.length === 5) {
+            const completed = completedValue(cells[3], cells[4]);
             cells[2] = ` ${summaryCount}/${planCount} `;
             cells[3] = ' Complete    ';
-            cells[4] = ` ${today} `;
+            cells[4] = completed;
           } else if (cells.length === 4) {
+            const completed = completedValue(cells[2], cells[3]);
             cells[1] = ` ${summaryCount}/${planCount} `;
             cells[2] = ' Complete    ';
-            cells[3] = ` ${today} `;
+            cells[3] = completed;
           }
           return '|' + cells.join('|') + '|';
         });

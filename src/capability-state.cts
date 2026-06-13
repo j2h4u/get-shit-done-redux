@@ -29,6 +29,7 @@
  */
 
 import path from 'node:path';
+import fs from 'node:fs';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import core = require('./core.cjs');
@@ -278,6 +279,61 @@ function _resolveCommandsGsdDir(): string {
   return path.join(repoRoot, 'commands', 'gsd');
 }
 
+function _loadRuntimeInstalledSkillManifest(runtimeConfigDir: string): Map<string, string[]> {
+  const manifest = new Map<string, string[]>();
+  const fileManifestPath = path.join(runtimeConfigDir, 'gsd-file-manifest.json');
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(fileManifestPath, 'utf8')) as Record<string, unknown>;
+    const files = parsed['files'];
+    if (files && typeof files === 'object' && !Array.isArray(files)) {
+      for (const relPath of Object.keys(files as Record<string, unknown>)) {
+        const normalized = relPath.replace(/\\/g, '/');
+        const flat = /^skills\/gsd-([^/]+)\/SKILL\.md$/.exec(normalized);
+        const bucketed = /^skills\/gsd\/gsd-([^/]+)\/SKILL\.md$/.exec(normalized);
+        const match = flat || bucketed;
+        if (match) manifest.set(match[1], []);
+      }
+    }
+  } catch {
+    // Fall through to filesystem discovery below.
+  }
+
+  const skillsDir = path.join(runtimeConfigDir, 'skills');
+  try {
+    for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const flat = /^gsd-(.+)$/.exec(entry.name);
+      if (flat && fs.existsSync(path.join(skillsDir, entry.name, 'SKILL.md'))) {
+        manifest.set(flat[1], []);
+      }
+    }
+    const bucketDir = path.join(skillsDir, 'gsd');
+    if (fs.existsSync(bucketDir)) {
+      for (const entry of fs.readdirSync(bucketDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const bucketed = /^gsd-(.+)$/.exec(entry.name);
+        if (bucketed && fs.existsSync(path.join(bucketDir, entry.name, 'SKILL.md'))) {
+          manifest.set(bucketed[1], []);
+        }
+      }
+    }
+  } catch {
+    // Missing skills dir is a valid degraded state; return what we have.
+  }
+
+  return manifest;
+}
+
+function _loadCapabilitySkillManifest(
+  runtimeConfigDir: string,
+  sourceCommandsDir: string = _resolveCommandsGsdDir(),
+): Map<string, string[]> {
+  const sourceManifest = loadSkillsManifest(sourceCommandsDir);
+  if (sourceManifest.size > 0) return sourceManifest;
+  return _loadRuntimeInstalledSkillManifest(runtimeConfigDir);
+}
+
 /**
  * Command entry point: resolve install profile, surface, and config; compute
  * capability state; emit the envelope via core.output.
@@ -356,8 +412,7 @@ function resolveCapabilityRuntimeState(
   // installedSkills='*' as if the install profile were truly unlimited).
   let installedSkills: Set<string> | '*';
   try {
-    const commandsGsdDir = _resolveCommandsGsdDir();
-    const manifest = loadSkillsManifest(commandsGsdDir);
+    const manifest = _loadCapabilitySkillManifest(resolvedConfigDir);
     const profileName = readActiveProfile(resolvedConfigDir) ?? 'full';
     const resolvedInstall = resolveProfile({
       modes: profileName.split(',').map((s: string) => s.trim()),
@@ -376,8 +431,7 @@ function resolveCapabilityRuntimeState(
   // ── Resolve surfaced skills (from runtime surface) ────────────────────────────
   let surfacedSkills: Set<string>;
   try {
-    const commandsGsdDir = _resolveCommandsGsdDir();
-    const manifest = loadSkillsManifest(commandsGsdDir);
+    const manifest = _loadCapabilitySkillManifest(resolvedConfigDir);
     const surfaceResult = resolveSurface(resolvedConfigDir, manifest, undefined, registry);
     // resolveSurface returns { name, skills: Set<string>, agents: Set<string> }
     // (always a concrete Set — full profile is materialized)
@@ -452,5 +506,7 @@ export = {
   cmdCapabilityState,
   // Exported for tests
   _resolveCommandsGsdDir,
+  _loadRuntimeInstalledSkillManifest,
+  _loadCapabilitySkillManifest,
   _isSafePropKey,
 };

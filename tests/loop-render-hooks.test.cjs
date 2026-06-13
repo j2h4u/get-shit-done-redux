@@ -26,6 +26,10 @@ const {
   CANONICAL_POINTS_FALLBACK,
   CANONICAL_POINTS,
 } = require('../gsd-core/bin/lib/loop-resolver.cjs');
+const {
+  resolveCapabilityState,
+  _loadCapabilitySkillManifest,
+} = require('../gsd-core/bin/lib/capability-state.cjs');
 
 // The real registry for integration tests
 const realRegistry = require('../gsd-core/bin/lib/capability-registry.cjs');
@@ -864,5 +868,56 @@ describe('cmdLoopRenderHooks end-to-end (via gsd-tools)', () => {
     );
     assert.notStrictEqual(result.status, 0, 'Expected non-zero exit for invalid point');
     assert.match(result.stderr, /plan:mid|Invalid loop point/);
+  });
+});
+
+describe('installed runtime manifest fallback', () => {
+  test('verify:post hooks stay active when only installed skills manifest is available', () => {
+    const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'loop-resolver-installed-runtime-'));
+    const sourceMissingDir = path.join(runtimeDir, 'missing-source', 'commands', 'gsd');
+    try {
+      fs.writeFileSync(path.join(runtimeDir, '.gsd-profile'), 'full\n', 'utf8');
+      fs.mkdirSync(path.join(runtimeDir, 'skills', 'gsd-secure-phase'), { recursive: true });
+      fs.mkdirSync(path.join(runtimeDir, 'skills', 'gsd-validate-phase'), { recursive: true });
+      fs.writeFileSync(path.join(runtimeDir, 'skills', 'gsd-secure-phase', 'SKILL.md'), '---\nname: gsd-secure-phase\n---\n', 'utf8');
+      fs.writeFileSync(path.join(runtimeDir, 'skills', 'gsd-validate-phase', 'SKILL.md'), '---\nname: gsd-validate-phase\n---\n', 'utf8');
+      fs.writeFileSync(
+        path.join(runtimeDir, 'gsd-file-manifest.json'),
+        JSON.stringify({
+          version: '1.5.0-rc.2',
+          files: {
+            'skills/gsd-secure-phase/SKILL.md': {},
+            'skills/gsd-validate-phase/SKILL.md': {},
+          },
+        }),
+        'utf8',
+      );
+
+      const manifest = _loadCapabilitySkillManifest(runtimeDir, sourceMissingDir);
+      assert.ok(manifest.has('secure-phase'), 'installed manifest must include secure-phase');
+      assert.ok(manifest.has('validate-phase'), 'installed manifest must include validate-phase');
+
+      const state = resolveCapabilityState({
+        registry: realRegistry,
+        installedSkills: '*',
+        surfacedSkills: new Set(manifest.keys()),
+        config: { workflow: { security_enforcement: true, nyquist_validation: true } },
+        cwd: tmpProjectDir,
+      });
+      const capabilityStatesById = new Map(state.capabilities.map((cap) => [cap.id, cap]));
+      const resolved = resolveLoopHooks({
+        point: 'verify:post',
+        registry: realRegistry,
+        config: { workflow: { security_enforcement: true, nyquist_validation: true } },
+        cwd: tmpProjectDir,
+        capabilityStatesById,
+      });
+
+      const active = resolved.activeHooks.map((hook) => `${hook.capId}:${hook.ref && hook.ref.skill}`).sort();
+      assert.ok(active.includes('nyquist:validate-phase'), 'nyquist validate hook must be active');
+      assert.ok(active.includes('security:secure-phase'), 'security hook must be active');
+    } finally {
+      cleanup(runtimeDir);
+    }
   });
 });

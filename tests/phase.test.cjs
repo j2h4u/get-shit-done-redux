@@ -2199,6 +2199,40 @@ describe('phase complete command', () => {
     assert.strictEqual(output.has_warnings, false);
   });
 
+  test('does not rewrite existing roadmap completion date on repeated phase complete', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'ROADMAP.md'),
+      [
+        '# Roadmap',
+        '',
+        '- [x] Phase 1: Foundation (completed 2026-01-01)',
+        '',
+        '### Phase 1: Foundation',
+        '**Goal:** Setup',
+        '**Plans:** 1 plans',
+        '',
+        '| Phase | Plans | Status | Completed |',
+        '|-------|-------|--------|-----------|',
+        '| 1. Foundation | 1/1 | Complete | 2026-01-01 |',
+      ].join('\n')
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'STATE.md'),
+      `# State\n\n**Current Phase:** 01\n**Current Phase Name:** Foundation\n**Status:** Complete\n**Current Plan:** 01-01\n**Last Activity:** 2026-01-01\n**Last Activity Description:** Phase 1 complete\n`
+    );
+
+    const p1 = path.join(tmpDir, '.planning', 'phases', '01-foundation');
+    fs.mkdirSync(p1, { recursive: true });
+    fs.writeFileSync(path.join(p1, '01-01-PLAN.md'), '# Plan');
+    fs.writeFileSync(path.join(p1, '01-01-SUMMARY.md'), '# Summary');
+
+    const result = runGsdTools('phase complete 1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), 'utf8');
+    assert.match(roadmap, /\|\s*1\. Foundation\s*\|\s*1\/1\s*\|\s*Complete\s*\|\s*2026-01-01\s*\|/);
+    assert.doesNotMatch(roadmap, /\|\s*1\. Foundation\s*\|\s*1\/1\s*\|\s*Complete\s*\|\s*2026-06-13\s*\|/);
+  });
+
   test('detects last phase in milestone', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'ROADMAP.md'),
