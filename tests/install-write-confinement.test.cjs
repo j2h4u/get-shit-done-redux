@@ -1447,6 +1447,24 @@ describe('F2: installOpencodeFamilySkills rejects symlink-escaping destDir', () 
       cleanup(rawDir);
     }
   });
+
+  test('F2b: OpenCode accepts its configured shared skills symlink', () => {
+    const rawDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-f2b-raw-'));
+    const originalSharedSkillsDir = process.env.GSD_SHARED_SKILLS_DIR;
+    try {
+      fs.writeFileSync(path.join(rawDir, 'help.md'), '# help\n', 'utf8');
+      process.env.GSD_SHARED_SKILLS_DIR = outsideDir;
+
+      const count = installOpencodeFamilySkills('opencode', configDir, rawDir, '~/.opencode/');
+
+      assert.strictEqual(count, 1);
+      assert.ok(fs.existsSync(path.join(outsideDir, 'gsd-help', 'SKILL.md')));
+    } finally {
+      if (originalSharedSkillsDir === undefined) delete process.env.GSD_SHARED_SKILLS_DIR;
+      else process.env.GSD_SHARED_SKILLS_DIR = originalSharedSkillsDir;
+      cleanup(rawDir);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

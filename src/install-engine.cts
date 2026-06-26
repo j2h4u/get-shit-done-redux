@@ -330,6 +330,21 @@ function hasExistingSymlinkBetween(
   return false;
 }
 
+function isAllowedSharedOpencodeSkillsSymlink(runtime: string, dest: string): boolean {
+  if (runtime !== 'opencode') return false;
+  const stat = tryLstat(dest);
+  if (!stat?.isSymbolicLink()) return false;
+
+  const sharedSkillsDir = path.resolve(
+    process.env.GSD_SHARED_SKILLS_DIR || path.join(os.homedir(), '.agents', 'skills'),
+  );
+  try {
+    return path.resolve(installFs().realpathSync(dest)) === sharedSkillsDir;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // User-artifact staging root
 // ---------------------------------------------------------------------------
@@ -1345,7 +1360,10 @@ function installOpencodeFamilySkills(
   // Symlink-escape guard: reject if any path component between installRoot and
   // dest is a symlink that would redirect writes outside the install root.
   // #2393: honor GSD_ALLOW_SYMLINKED_DEST for intentional user-owned symlink layouts.
-  if (hasExistingSymlinkBetween(path.resolve(installRoot), dest, { allowOptInFollow: isSymlinkedDestOptIn() })) {
+  if (
+    hasExistingSymlinkBetween(path.resolve(installRoot), dest, { allowOptInFollow: isSymlinkedDestOptIn() }) &&
+    !isAllowedSharedOpencodeSkillsSymlink(runtime, dest)
+  ) {
     throw new Error(
       `installOpencodeFamilySkills: destDir "${dest}" contains a symlink the install root "${installRoot}" does not trust — refusing to write. If this is an intentional user-owned symlink layout, re-run with GSD_ALLOW_SYMLINKED_DEST=1.`,
     );
