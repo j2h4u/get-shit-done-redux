@@ -4350,6 +4350,45 @@ describe('#2695: fresh Codex installs deliver the complete four-file hook set', 
   }
 });
 
+describe('Codex installs deliver transitive hook library dependencies', () => {
+  for (const profile of ['core', 'full']) {
+    test(`fresh --profile=${profile} context monitor loads from its installed location`, (t) => {
+      const { configDir, result } = runCodexInstall({ profile });
+      t.after(() => cleanup(configDir));
+
+      const hooksDir = hooksDirOf(configDir);
+      for (const file of ['hook-exit.js', 'cli-exit.js', 'exit-code-registry.js']) {
+        assert.ok(
+          fs.existsSync(path.join(hooksDir, 'lib', file)),
+          `expected hooks/lib/${file} for --profile=${profile}\n` +
+            `installer stdout: ${result.stdout}\ninstaller stderr: ${result.stderr}`,
+        );
+      }
+
+      const load = runNode(['-e', `require(${JSON.stringify(path.join(hooksDir, 'gsd-context-monitor.js'))})`]);
+      assert.strictEqual(
+        load.exitCode,
+        0,
+        `installed context monitor must load for --profile=${profile}\nstdout: ${load.stdout}\nstderr: ${load.stderr}`,
+      );
+    });
+  }
+
+  test('installed-tree agent validation accepts the generated sandbox posture', (t) => {
+    const { configDir, result } = runCodexInstall({ profile: 'full' });
+    t.after(() => cleanup(configDir));
+    assert.strictEqual(result.exitCode, 0, `installer failed: ${result.stderr}`);
+
+    const validation = runNode(
+      [path.join(configDir, 'gsd-core', 'bin', 'gsd-tools.cjs'), 'validate', 'agents', '--json'],
+      { env: installerEnv({ HOME: configDir, USERPROFILE: configDir, CODEX_HOME: configDir }) },
+    );
+    assert.strictEqual(validation.exitCode, 0, `installed validator failed: ${validation.stderr}`);
+    const posture = JSON.parse(validation.stdout).sandbox_posture;
+    assert.strictEqual(posture.ok, true, `generated sandbox posture must validate: ${JSON.stringify(posture.violations)}`);
+  });
+});
+
 describe('#2695: Codex upgrades refresh all four hook files to the current version', () => {
   // Pre-seed all four files stamped at OLDER_VERSION so an upgrade must overwrite them.
   function olderSeed() {

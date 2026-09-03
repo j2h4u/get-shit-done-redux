@@ -12064,8 +12064,10 @@ function install(isGlobal, runtime = DEFAULT_RUNTIME, options = {}) {
     //   require()s managed-hooks-registry.cjs for MANAGED_HOOKS — so all four must be
     //   installed/refreshed together for every profile, or Codex is wired to a dependency
     //   chain the same installer never delivers.
-    // We deliberately do *not* copy gsd-graphify-update.sh or hooks/lib/ for Codex
-    // in this change (graphify auto-update support for Codex is out of scope for #3579).
+    // Graphify auto-update support for Codex remains out of scope here, but the
+    // context monitor's top-level requires must be staged with it.  Walk the lib
+    // dependency graph below so an installed hook cannot fail before its own
+    // crash-policy handling is reached.
     const CODEX_HOOKS_TO_COPY = [
       'gsd-check-update.js',
       'gsd-check-update-worker.js',
@@ -12115,6 +12117,42 @@ function install(isGlobal, runtime = DEFAULT_RUNTIME, options = {}) {
           try { fs.chmodSync(destFile, 0o755); } catch (e) { /* Windows */ }
         }
         codexStagedHooks = true;
+      }
+
+      const requiredLibFiles = new Set();
+      const scannedLibFiles = new Set();
+      const rootLibRequireRe = /require\(\s*['"]\.\/lib\/([A-Za-z0-9._-]+)['"]\s*\)/g;
+      const siblingLibRequireRe = /require\(\s*['"]\.\/(?:lib\/)?([A-Za-z0-9._-]+)['"]\s*\)/g;
+      const scanForLibRequires = (content, fromLib = false) => {
+        const libRequireRe = fromLib ? siblingLibRequireRe : rootLibRequireRe;
+        libRequireRe.lastIndex = 0;
+        let match;
+        while ((match = libRequireRe.exec(content)) !== null) requiredLibFiles.add(match[1]);
+      };
+
+      for (const entry of CODEX_HOOKS_TO_COPY) {
+        const installedHook = path.join(codexHooksDest, entry);
+        if (fs.existsSync(installedHook) && entry.endsWith('.js')) {
+          scanForLibRequires(fs.readFileSync(installedHook, 'utf8'));
+        }
+      }
+
+      if (requiredLibFiles.size > 0) {
+        const srcLibDir = path.join(codexHooksSrc, 'lib');
+        const destLibDir = path.join(codexHooksDest, 'lib');
+        fs.mkdirSync(destLibDir, { recursive: true });
+        let libFile = [...requiredLibFiles].find((file) => !scannedLibFiles.has(file));
+        while (libFile !== undefined) {
+          scannedLibFiles.add(libFile);
+          const srcFile = path.join(srcLibDir, libFile);
+          if (!fs.existsSync(srcFile)) {
+            throw new Error(`Codex hook dependency missing from bundle: hooks/dist/lib/${libFile}`);
+          }
+          const content = fs.readFileSync(srcFile, 'utf8');
+          fs.writeFileSync(path.join(destLibDir, libFile), content);
+          scanForLibRequires(content, true);
+          libFile = [...requiredLibFiles].find((file) => !scannedLibFiles.has(file));
+        }
       }
       console.log(`  ${green}✓${reset} Installed hooks (Codex)`);
       // #2717: write the CommonJS marker into hooks/ alongside the staged .js

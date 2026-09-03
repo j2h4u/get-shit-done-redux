@@ -397,6 +397,13 @@ function _canonicalAgentSourceDir(): string {
   return path.join(__dirname, '..', '..', '..', 'agents');
 }
 
+function _installedCodexAgentToolsValue(content: string): string {
+  const block = content.match(/<codex_agent_role>\s*([\s\S]*?)\s*<\/codex_agent_role>/);
+  if (!block) return '';
+  const tools = block[1].match(/^tools:\s*(.+)$/m);
+  return tools ? tools[1].trim() : '';
+}
+
 /**
  * Validate installed Codex `.toml` agents' `sandbox_mode` against what each
  * role's own tool contract derives (#3897, ADR-3473 §8.3 criterion 3,
@@ -513,7 +520,13 @@ function checkCodexSandboxPosture(runtime?: string, projectRoot?: string): Codex
     // above), so extractToolsValue's `undefined` (non-string input) branch is
     // unreachable on this path — the `?? ''` is a type-level formality, not a
     // behavior change (F4, #3897 security review: extractToolsValue is TOTAL).
-    const toolsRaw = extractToolsValue(canonicalContent) ?? '';
+    // In a source checkout the canonical agent keeps `tools:` in YAML
+    // frontmatter.  A global Codex install keeps the converted `.md` beside
+    // the emitted TOML and moves that contract into `<codex_agent_role>`.
+    // Accept both representations so installed-tree validation derives the
+    // same sandbox mode as the installer that produced the artifact.
+    const toolsRaw = (extractToolsValue(canonicalContent) ?? '') ||
+      _installedCodexAgentToolsValue(canonicalContent);
     const expected = deriveCodexSandboxMode(agentName, toolsRaw);
     if (expected !== found) {
       // #3897 rung 4 (isolated correctness review, MINOR finding 3):
